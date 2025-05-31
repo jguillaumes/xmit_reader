@@ -4,6 +4,7 @@ import (
 	"flag"
 	"os"
 
+	"github.com/jguillaumes/xmit_reader/internal/unloadfile"
 	"github.com/jguillaumes/xmit_reader/internal/xmitfile"
 )
 
@@ -75,6 +76,21 @@ func main() {
 	} else {
 		println("Successfully processed", count, "records from the XMIT input file.")
 	}
+
+	// Close the unload file handle
+	if err := unloadFileHandle.Close(); err != nil {
+		println("Error closing unload file:", err.Error())
+		os.Exit(1)
+	}
+	// Reopen the unload file to read its contents
+	unloadFileHandle, err = os.Open(*unloadFile)
+	if err != nil {
+		println("Error reopening unload file for reading:", err.Error())
+		os.Exit(1)
+	}
+	defer unloadFileHandle.Close()
+
+	_, err = unloadfile.ProcessUnloadFile(unloadFileHandle, *targetDir)
 
 	if deleteUnloadFile {
 		// Delete the unload file if it was created as a temporary file

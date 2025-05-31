@@ -44,12 +44,13 @@ func NewXmitParams() *XmitParams {
 func ProcessXMITFile(inFile io.Reader, targetDir string, unloadFile io.Writer) (int, error) {
 
 	count := 0
-	data, err := readXMITRecord(inFile)
 	xmitParms := *NewXmitParams()
 	var endOfXmit bool = false
+	var currentRecord []byte
 
-	for data != nil && err == nil && endOfXmit == false {
-		fmt.Printf("Record Length: %3d, flags: %08b, id: %s\n", data.recordLen(), data.recordFlags(), data.recordId())
+	data, err := readXMITRecord(inFile)
+	for data != nil && err == nil && !endOfXmit {
+		// fmt.Printf("Record Length: %3d, flags: %08b, id: %s\n", data.recordLen(), data.recordFlags(), data.recordId())
 		switch data.recordId() {
 		case "INMR01":
 			tus := data.textUnits(0)
@@ -122,6 +123,10 @@ func ProcessXMITFile(inFile io.Reader, targetDir string, unloadFile io.Writer) (
 					var variable = ""
 					var ctlasa = ""
 					var blocked = ""
+					var spanned = ""
+					if (recfmBytes & 0x0801) != 0 {
+						spanned = "S"
+					}
 					if recfmBytes&0x1000 != 0 {
 						blocked = "B"
 					}
@@ -134,7 +139,7 @@ func ProcessXMITFile(inFile io.Reader, targetDir string, unloadFile io.Writer) (
 					if recfmBytes&0x0400 != 0 {
 						ctlasa = "A"
 					}
-					fileParams.SourceRecfm = fmt.Sprintf("%s%s%s%s", fixed, variable, blocked, ctlasa)
+					fileParams.SourceRecfm = fmt.Sprintf("%s%s%s%s%s", fixed, variable, blocked, ctlasa, spanned)
 				case XtuINMCREAT:
 					tuDv := tu.Data()[0]
 					// The creation date is in the format YYYYMMDD in EBCDIC
@@ -175,9 +180,31 @@ func ProcessXMITFile(inFile io.Reader, targetDir string, unloadFile io.Writer) (
 				}
 			}
 			xmitParms.XmitFiles = append(xmitParms.XmitFiles, fileParams)
+		case "INMR03":
+			// File header record, ignore it
+		case "INMR04":
+			// User control record, ignore it
 		case "INMR06": // Last record in the XMIT file, end processing here
 			fmt.Println("End of XMIT file processing.")
 			endOfXmit = true
+		case "INMR07":
+			// Notification record, ignore it
+		default:
+			// Data reecord
+			if data.recordFlags()&FirstSegment != 0 {
+				currentRecord = make([]byte, 0)
+			}
+			currentRecord = append(currentRecord, data.recordData()...)
+			if data.recordFlags()&LastSegment != 0 {
+				// Write the current record to the unload file
+				if unloadFile != nil {
+					_, err := unloadFile.Write(currentRecord)
+					if err != nil {
+						fmt.Printf("Error writing to unload file: %v\n", err)
+					}
+				}
+				currentRecord = nil // Reset for the next record
+			}
 		}
 		count++
 		data, err = readXMITRecord(inFile)
