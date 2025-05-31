@@ -2,6 +2,7 @@ package xmitfile
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"io"
 	"time"
@@ -11,36 +12,36 @@ import (
 )
 
 type XmitFileParams struct {
-	sourceDDName   string
-	sourceDSName   string
-	sourceDsorg    string
-	sourceDstype   string
-	sourceCreation time.Time
-	sourceRecfm    string
-	sourceLrecl    int16
-	sourceBlksize  int16
-	aproxSize      int64
-	utilPgmName    string
+	SourceDDName   string    `json:"ddame"`
+	SourceDSName   string    `json:"dsname"`
+	SourceDsorg    string    `json:"dssorg"`
+	SourceDstype   string    `json:"dsstype"`
+	SourceCreation time.Time `json:"creation"`
+	SourceRecfm    string    `json:"recfm"`
+	SourceLrecl    int16     `json:"lrecl"`
+	SourceBlksize  int16     `json:"blksize"`
+	AproxSize      int64     `json:"aprox_size"`
+	UtilPgmName    string    `json:"util_pgm_name"`
 }
 
 type XmitParams struct {
-	sourceNodeName string
-	sourceUserId   string
-	sourceTstamp   time.Time
-	numFiles       int
-	XmitFiles      []XmitFileParams
+	SourceNodeName string           `json:"source_node_name"`
+	SourceUserId   string           `json:"source_user_id"`
+	SourceTstamp   time.Time        `json:"source_timestamp"`
+	NumFiles       int              `json:"num_files"`
+	XmitFiles      []XmitFileParams `json:"xmit_files"`
 }
 
 func NewXmitParams() *XmitParams {
 	return &XmitParams{
-		sourceNodeName: "",
-		sourceUserId:   "",
-		numFiles:       0,
+		SourceNodeName: "",
+		SourceUserId:   "",
+		NumFiles:       0,
 		XmitFiles:      make([]XmitFileParams, 0),
 	}
 }
 
-func ProcessXMITFile(inFile io.Reader, targetDir string) (int, error) {
+func ProcessXMITFile(inFile io.Reader, targetDir string, unloadFile io.Writer) (int, error) {
 
 	count := 0
 	data, err := readXMITRecord(inFile)
@@ -58,13 +59,13 @@ func ProcessXMITFile(inFile io.Reader, targetDir string) (int, error) {
 				case XtuINMNUMF:
 					xtud := tu.Data()[0]
 					nb := xtud.Len
-					xmitParms.numFiles = xu.GetVariableLengthInt(int(nb), xtud.Data)
+					xmitParms.NumFiles = xu.GetVariableLengthInt(int(nb), xtud.Data)
 				case XtuINMFUID:
 					userId, _ := ebcdic.Decode(tu.Data()[0].Data, ebcdic.EBCDIC037)
-					xmitParms.sourceUserId = userId
+					xmitParms.SourceUserId = userId
 				case XtuINMFNODE:
 					nodeName, _ := ebcdic.Decode(tu.Data()[0].Data, ebcdic.EBCDIC037)
-					xmitParms.sourceNodeName = nodeName
+					xmitParms.SourceNodeName = nodeName
 				case XtuINMFTIME:
 					tuDv := tu.Data()[0]
 					// The timestamp is in the format YYYYMMDDHHMSS in EBCDIC
@@ -74,7 +75,7 @@ func ProcessXMITFile(inFile io.Reader, targetDir string) (int, error) {
 					if err != nil {
 						fmt.Printf("Error parsing timestamp: %v\n", err)
 					} else {
-						xmitParms.sourceTstamp = timestamp
+						xmitParms.SourceTstamp = timestamp
 					}
 				}
 			}
@@ -88,31 +89,31 @@ func ProcessXMITFile(inFile io.Reader, targetDir string) (int, error) {
 				switch tu.Id() {
 				case XtuINMUTILN:
 					utilPgmName, _ := ebcdic.Decode(tu.Data()[0].Data, ebcdic.EBCDIC037)
-					fileParams.utilPgmName = utilPgmName
+					fileParams.UtilPgmName = utilPgmName
 				case XtuINMDSORG:
 					dsorgBytes := xu.GetVariableLengthInt(2, tu.Data()[0].Data)
 					switch dsorgBytes {
 					case 0x0008:
-						fileParams.sourceDsorg = "VSAM"
+						fileParams.SourceDsorg = "VSAM"
 					case 0x0200:
-						fileParams.sourceDsorg = "PO"
+						fileParams.SourceDsorg = "PO"
 					case 0x4000:
-						fileParams.sourceDsorg = "PS"
+						fileParams.SourceDsorg = "PS"
 					default:
-						fileParams.sourceDsorg = "UNKNOWN"
+						fileParams.SourceDsorg = "UNKNOWN"
 					}
 				case XtuINMTYPE:
 					tuDv := tu.Data()[0]
 					dstyteByte := tuDv.Data[0]
 					switch dstyteByte {
 					case 0x80:
-						fileParams.sourceDstype = "LIBRARY"
+						fileParams.SourceDstype = "LIBRARY"
 					case 0x40:
-						fileParams.sourceDstype = "PGMLIB"
+						fileParams.SourceDstype = "PGMLIB"
 					case 0x04:
-						fileParams.sourceDstype = "EXTENDED"
+						fileParams.SourceDstype = "EXTENDED"
 					case 0x01:
-						fileParams.sourceDstype = "LARGE"
+						fileParams.SourceDstype = "LARGE"
 					}
 				case XtuINMRECFM:
 					tuDv := tu.Data()[0]
@@ -133,22 +134,29 @@ func ProcessXMITFile(inFile io.Reader, targetDir string) (int, error) {
 					if recfmBytes&0x0400 != 0 {
 						ctlasa = "A"
 					}
-					fileParams.sourceRecfm = fmt.Sprintf("%s%s%s%s", fixed, variable, blocked, ctlasa)
+					fileParams.SourceRecfm = fmt.Sprintf("%s%s%s%s", fixed, variable, blocked, ctlasa)
+				case XtuINMCREAT:
+					tuDv := tu.Data()[0]
+					// The creation date is in the format YYYYMMDD in EBCDIC
+					creationDate, _ := ebcdic.Decode(tuDv.Data, ebcdic.EBCDIC037)
+					// Parse the creation date
+					creation, _ := time.Parse("20060102", creationDate)
+					fileParams.SourceCreation = creation
 				case XtuINMLRECL:
 					tuDv := tu.Data()[0]
 					lreclBytes := xu.GetVariableLengthInt(int(tuDv.Len), tuDv.Data)
-					fileParams.sourceLrecl = int16(lreclBytes)
+					fileParams.SourceLrecl = int16(lreclBytes)
 				case XtuINMBLKSZ:
 					tuDv := tu.Data()[0]
 					blksizeBytes := xu.GetVariableLengthInt(int(tuDv.Len), tuDv.Data)
-					fileParams.sourceBlksize = int16(blksizeBytes)
+					fileParams.SourceBlksize = int16(blksizeBytes)
 				case XtuINMSIZE:
 					tuDv := tu.Data()[0]
 					aproxSizeBytes := xu.GetVariableLengthInt(int(tuDv.Len), tuDv.Data)
-					fileParams.aproxSize = int64(aproxSizeBytes)
+					fileParams.AproxSize = int64(aproxSizeBytes)
 				case XtuINMDDNAM:
 					ddname, _ := ebcdic.Decode(tu.Data()[0].Data, ebcdic.EBCDIC037)
-					fileParams.sourceDDName = ddname
+					fileParams.SourceDDName = ddname
 				case XtuINMDSNAM:
 					parts := tus[t].Count()
 					var dsname string
@@ -160,7 +168,10 @@ func ProcessXMITFile(inFile io.Reader, targetDir string) (int, error) {
 							dsname += "."
 						}
 					}
-					fileParams.sourceDSName = dsname
+					fileParams.SourceDSName = dsname
+					/* 				default:
+					fmt.Printf("Unknown text unit ID: %04x\n", tu.Id())
+					*/
 				}
 			}
 			xmitParms.XmitFiles = append(xmitParms.XmitFiles, fileParams)
@@ -171,7 +182,12 @@ func ProcessXMITFile(inFile io.Reader, targetDir string) (int, error) {
 		count++
 		data, err = readXMITRecord(inFile)
 	}
-	fmt.Printf("XMIT parameters: %+v\n", xmitParms)
+	marshalled, err := json.MarshalIndent(xmitParms, "", "  ")
+	if err != nil {
+		fmt.Printf("Error marshalling XMIT parameters: %v\n", err)
+	} else {
+		fmt.Printf("XMIT parameters: %s\n", marshalled)
+	}
 
 	// Discard err if it is EOF
 	if err != nil && err == io.EOF {
