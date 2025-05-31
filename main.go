@@ -1,11 +1,10 @@
 package main
 
 import (
-	"bufio"
 	"flag"
 	"os"
 
-	"github.com/jguillaumes/xmit_reader/internal"
+	"github.com/jguillaumes/xmit_reader/internal/xmitfile"
 )
 
 func main() {
@@ -37,10 +36,10 @@ func main() {
 		os.Exit(1)
 	}
 	defer inFile.Close()
+
 	// Process the input file and generate output files
 	var count int
-	reader := bufio.NewReader(inFile)
-	count, err = internal.ProcessXMITFile(reader, *targetDir)
+	count, err = xmitfile.ProcessXMITFile(inFile, *targetDir)
 	if err != nil {
 		println("Error processing input file:", err.Error())
 		os.Exit(1)

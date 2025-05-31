@@ -1,7 +1,7 @@
-package internal
+package xmitfile
 
 import (
-	"bufio"
+	"fmt"
 	"io"
 
 	ebcdic "github.com/jguillaumes/go-ebcdic"
@@ -77,23 +77,28 @@ func (x *XMITRecordImpl) textUnits(offset uint8) []XmitTextUnit {
 }
 
 // readXMITRecord reads a single XMIT record from the provided bufio.Reader.
-func readXMITRecord(f *bufio.Reader) (XMITRecord, error) {
-	// Read the record length
-	recordLen, err := f.ReadByte()
-	if err != nil {
-		return nil, err
-	}
+func readXMITRecord(f io.Reader) (XMITRecord, error) {
+	oneByte := make([]byte, 1)
 
-	// Read the record flags
-	recordFlags, err := f.ReadByte()
+	_, err := f.Read(oneByte)
 	if err != nil {
 		return nil, err
 	}
+	recordLen := oneByte[0]
+
+	_, err = f.Read(oneByte)
+	if err != nil {
+		return nil, err
+	}
+	recordFlags := oneByte[0]
 
 	// Read the record data
 	data := make([]byte, recordLen-2) // -2 for the length and flags bytes
-	if _, err := io.ReadFull(f, data); err != nil {
+	if l, err := f.Read(data); err != nil {
 		return nil, err
+	} else if l < int(recordLen-2) {
+		fmt.Printf("Expected to read %d bytes, but got %d bytes\n", recordLen-2, l)
+		return nil, io.ErrUnexpectedEOF
 	}
 
 	return &XMITRecordImpl{
