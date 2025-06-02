@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"log"
 	"os"
 
 	"github.com/jguillaumes/xmit_reader/internal/unloadfile"
@@ -9,6 +10,9 @@ import (
 )
 
 func main() {
+
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
 	// Command line arguments:
 	// --input <input_file>: The input XMIT file to process.
 	// --target <target_directory>: The directory where the output files will be saved.
@@ -29,7 +33,7 @@ func main() {
 
 	// Check if the targert directory exists
 	if _, err := os.Stat(*targetDir); os.IsNotExist(err) {
-		println("Target directory does not exist:", *targetDir)
+		log.Println("Target directory does not exist:", *targetDir)
 		os.Exit(1)
 	}
 
@@ -38,7 +42,7 @@ func main() {
 	if *unloadFile == "" {
 		tempFile, err := os.CreateTemp("", "xmit_unload_*.unload")
 		if err != nil {
-			println("Error creating temporary unload file:", err.Error())
+			log.Println("Error creating temporary unload file:", err.Error())
 			os.Exit(1)
 		}
 		defer tempFile.Close()
@@ -51,14 +55,14 @@ func main() {
 	// Unconditionally open the unload file for writing
 	unloadFileHandle, err := os.OpenFile(*unloadFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
-		println("Error opening unload file:", err.Error())
+		log.Println("Error opening unload file:", err.Error())
 		os.Exit(1)
 	}
 
 	// Open the input file
 	inFile, err := os.Open(*inputFile)
 	if err != nil {
-		println("Error opening input file:", err.Error())
+		log.Println("Error opening input file:", err.Error())
 		os.Exit(1)
 	}
 	defer inFile.Close()
@@ -67,25 +71,25 @@ func main() {
 	var count int
 	count, err = xmitfile.ProcessXMITFile(inFile, *targetDir, unloadFileHandle)
 	if err != nil {
-		println("Error processing input file:", err.Error())
+		log.Println("Error processing input file:", err.Error())
 		os.Exit(1)
 	}
 
 	if count == 0 {
-		println("No members extracted from the input file.")
+		log.Println("No members extracted from the input file.")
 	} else {
-		println("Successfully processed", count, "records from the XMIT input file.")
+		log.Println("Successfully processed", count, "records from the XMIT input file.")
 	}
 
 	// Close the unload file handle
 	if err := unloadFileHandle.Close(); err != nil {
-		println("Error closing unload file:", err.Error())
+		log.Println("Error closing unload file:", err.Error())
 		os.Exit(1)
 	}
 	// Reopen the unload file to read its contents
 	unloadFileHandle, err = os.Open(*unloadFile)
 	if err != nil {
-		println("Error reopening unload file for reading:", err.Error())
+		log.Println("Error reopening unload file for reading:", err.Error())
 		os.Exit(1)
 	}
 	defer unloadFileHandle.Close()
@@ -95,9 +99,9 @@ func main() {
 	if deleteUnloadFile {
 		// Delete the unload file if it was created as a temporary file
 		if err := os.Remove(*unloadFile); err != nil {
-			println("Error deleting unload file:", err.Error())
+			log.Println("Error deleting unload file:", err.Error())
 		} else {
-			println("Temporary unload file deleted:", *unloadFile)
+			log.Println("Temporary unload file deleted:", *unloadFile)
 		}
 	}
 

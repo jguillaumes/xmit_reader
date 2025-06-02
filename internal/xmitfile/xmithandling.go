@@ -1,10 +1,11 @@
 package xmitfile
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
-	"fmt"
 	"io"
+	"log"
 	"time"
 
 	"github.com/jguillaumes/go-ebcdic"
@@ -46,7 +47,7 @@ func ProcessXMITFile(inFile io.Reader, targetDir string, unloadFile io.Writer) (
 	count := 0
 	xmitParms := *NewXmitParams()
 	var endOfXmit bool = false
-	var currentRecord []byte
+	var currentBlock *bytes.Buffer
 
 	data, err := readXMITRecord(inFile)
 	for data != nil && err == nil && !endOfXmit {
@@ -74,7 +75,7 @@ func ProcessXMITFile(inFile io.Reader, targetDir string, unloadFile io.Writer) (
 					// Parse the timestamp
 					timestamp, err := time.Parse("20060102150405", tstamp)
 					if err != nil {
-						fmt.Printf("Error parsing timestamp: %v\n", err)
+						log.Printf("Error parsing timestamp: %v\n", err)
 					} else {
 						xmitParms.SourceTstamp = timestamp
 					}
@@ -83,7 +84,7 @@ func ProcessXMITFile(inFile io.Reader, targetDir string, unloadFile io.Writer) (
 		case "INMR02":
 			var fileParams XmitFileParams
 			filenumber := binary.BigEndian.Uint32(data.recordData()[6:10])
-			fmt.Printf("File Number: %d\n", filenumber)
+			log.Printf("File Number: %d\n", filenumber)
 			tus := data.textUnits(4)
 			for t := range tus {
 				tu := tus[t]
@@ -119,27 +120,7 @@ func ProcessXMITFile(inFile io.Reader, targetDir string, unloadFile io.Writer) (
 				case XtuINMRECFM:
 					tuDv := tu.Data()[0]
 					recfmBytes := xu.GetVariableLengthInt(int(tuDv.Len), tuDv.Data)
-					var fixed = ""
-					var variable = ""
-					var ctlasa = ""
-					var blocked = ""
-					var spanned = ""
-					if (recfmBytes & 0x0801) != 0 {
-						spanned = "S"
-					}
-					if recfmBytes&0x1000 != 0 {
-						blocked = "B"
-					}
-					if recfmBytes&0x4000 != 0 {
-						variable = "V"
-					}
-					if recfmBytes&0x8000 != 0 {
-						fixed = "F"
-					}
-					if recfmBytes&0x0400 != 0 {
-						ctlasa = "A"
-					}
-					fileParams.SourceRecfm = fmt.Sprintf("%s%s%s%s%s", fixed, variable, blocked, ctlasa, spanned)
+					fileParams.SourceRecfm = xu.RecfmHwToString(uint16(recfmBytes))
 				case XtuINMCREAT:
 					tuDv := tu.Data()[0]
 					// The creation date is in the format YYYYMMDD in EBCDIC
@@ -185,25 +166,24 @@ func ProcessXMITFile(inFile io.Reader, targetDir string, unloadFile io.Writer) (
 		case "INMR04":
 			// User control record, ignore it
 		case "INMR06": // Last record in the XMIT file, end processing here
-			fmt.Println("End of XMIT file processing.")
+			log.Println("End of XMIT file processing.")
 			endOfXmit = true
 		case "INMR07":
 			// Notification record, ignore it
 		default:
 			// Data reecord
 			if data.recordFlags()&FirstSegment != 0 {
-				currentRecord = make([]byte, 0)
+				currentBlock = bytes.NewBuffer(make([]byte, 0, 32767))
 			}
-			currentRecord = append(currentRecord, data.recordData()...)
+			currentBlock.Write(data.recordData())
 			if data.recordFlags()&LastSegment != 0 {
-				// Write the current record to the unload file
-				if unloadFile != nil {
-					_, err := unloadFile.Write(currentRecord)
-					if err != nil {
-						fmt.Printf("Error writing to unload file: %v\n", err)
-					}
-				}
-				currentRecord = nil // Reset for the next record
+				blockLen := int16(currentBlock.Len()) + 8
+				lenBytes := make([]byte, 8)
+				binary.BigEndian.PutUint16(lenBytes, uint16(blockLen))
+				binary.BigEndian.PutUint16(lenBytes[2:], uint16(0))
+				binary.BigEndian.PutUint32(lenBytes[4:], uint32(0))
+				unloadFile.Write(lenBytes)
+				unloadFile.Write(currentBlock.Bytes())
 			}
 		}
 		count++
@@ -211,9 +191,9 @@ func ProcessXMITFile(inFile io.Reader, targetDir string, unloadFile io.Writer) (
 	}
 	marshalled, err := json.MarshalIndent(xmitParms, "", "  ")
 	if err != nil {
-		fmt.Printf("Error marshalling XMIT parameters: %v\n", err)
+		log.Printf("Error marshalling XMIT parameters: %v\n", err)
 	} else {
-		fmt.Printf("XMIT parameters: %s\n", marshalled)
+		log.Printf("XMIT parameters: %s\n", marshalled)
 	}
 
 	// Discard err if it is EOF
