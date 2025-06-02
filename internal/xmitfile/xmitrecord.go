@@ -1,8 +1,8 @@
 package xmitfile
 
 import (
-	"fmt"
 	"io"
+	"log"
 
 	ebcdic "github.com/jguillaumes/go-ebcdic"
 )
@@ -97,7 +97,7 @@ func readXMITRecord(f io.Reader) (XMITRecord, error) {
 	if l, err := f.Read(data); err != nil {
 		return nil, err
 	} else if l < int(recordLen-2) {
-		fmt.Printf("Expected to read %d bytes, but got %d bytes\n", recordLen-2, l)
+		log.Printf("Expected to read %d bytes, but got %d bytes\n", recordLen-2, l)
 		return nil, io.ErrUnexpectedEOF
 	}
 

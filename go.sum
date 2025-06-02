@@ -1,2 +1,6 @@
 github.com/jguillaumes/go-ebcdic v0.0.0-20250530170748-14a28c69d5db h1:UdqFdX3G7G3PpJiTgmmuKsYHuPV4VwqVosFlrTMsl1U=
 github.com/jguillaumes/go-ebcdic v0.0.0-20250530170748-14a28c69d5db/go.mod h1:yN1lnVB3qtVCxCDCxP3gKqYEpWeD+9ZTMVrEKI+88Tw=
+github.com/jguillaumes/go-hexdump v1.0.0 h1:DeHybashvqwnggGvmSAO9eZlgZbZONCTn++kMX9OoP0=
+github.com/jguillaumes/go-hexdump v1.0.0/go.mod h1:vIlEFNJeznhO4z5GGEgnVAUbPFx5oGsI7qxAnnnyTe0=
+github.com/jguillaumes/go-hexdump v1.0.1 h1:jh3ifBXiXvNiHHzFTUza4bcUG/a7MnnS95qpXItYetU=
+github.com/jguillaumes/go-hexdump v1.0.1/go.mod h1:vIlEFNJeznhO4z5GGEgnVAUbPFx5oGsI7qxAnnnyTe0=
