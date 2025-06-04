@@ -94,7 +94,7 @@ func main() {
 	}
 	defer unloadFileHandle.Close()
 
-	_, err = unloadfile.ProcessUnloadFile(unloadFileHandle, *targetDir)
+	_, err = unloadfile.ProcessUnloadFile(*unloadFileHandle, *targetDir)
 
 	if deleteUnloadFile {
 		// Delete the unload file if it was created as a temporary file
