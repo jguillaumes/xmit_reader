@@ -4,15 +4,18 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+
+	// "encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"os"
 
 	"github.com/jguillaumes/go-ebcdic"
-	hexdump "github.com/jguillaumes/go-hexdump"
+	"github.com/jguillaumes/go-hexdump"
 )
 
-func ProcessUnloadFile(inFile io.Reader, targetDir string) (int, error) {
+func ProcessUnloadFile(inFile os.File, targetDir string) (int, error) {
 	var numbytes = 0
 
 	//+
@@ -31,6 +34,9 @@ func ProcessUnloadFile(inFile io.Reader, targetDir string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	marshalled, _ := json.MarshalIndent(c1, "", "  ")
+
+	log.Println(marshalled)
 
 	//+
 	// Read COPYR2 record
@@ -45,6 +51,7 @@ func ProcessUnloadFile(inFile io.Reader, targetDir string) (int, error) {
 		}
 	}
 	c2, err := NewCopyr2(copyr2Buffer.Bytes())
+	_ = c2
 	if err != nil {
 		return 0, err
 	}
@@ -54,46 +61,39 @@ func ProcessUnloadFile(inFile io.Reader, targetDir string) (int, error) {
 		return 0, err
 	}
 
-	for i, d := range dirBlocks {
-		log.Printf("Directory block number %d\n", i)
-		log.Printf("\n%s\n", hexdump.HexDump(d[:], ebcdic.EBCDIC037))
+	// for i, d := range dirBlocks {
+	// 	log.Printf("Directory block number %d\n", i)
+	// 	log.Printf("\n%s\n", hexdump.HexDump(d[:], ebcdic.EBCDIC037))
+	// }
+
+	members, err := processDirBlocks(dirBlocks)
+	if err != nil {
+		return 0, err
 	}
 
-	// Read rest of records
-	// The "header" portion is always 8 bytes
-	rechead := make([]byte, 8)
-	end_records := false
-	for !end_records {
-		l, err := inFile.Read(rechead)
-		if l != 8 || err != nil {
-			if err == io.EOF {
-				break
-			}
-			log.Fatalf("Error reading record head, read %d byres: %v", l, err)
-		}
-		hbuff := bytes.NewBuffer(rechead)
-		reclen := binary.BigEndian.Uint16(hbuff.Next(2))
-		_ = hbuff.Next(6)
-		// Next byte will tell us if we are dealing with a member data record
-		memberDataBuff := bytes.NewBuffer(make([]byte, reclen-8))
-		l, err = inFile.Read(memberDataBuff.Bytes())
-		log.Printf("\nPossible data record\n%s\n", hexdump.HexDump(memberDataBuff.Bytes(), ebcdic.EBCDIC037))
-		t, _ := memberDataBuff.ReadByte()
-		if t != 0x00 {
-			// Not a member data record, ignore
-			continue
-		}
-
+	if !c1.IsPdse() {
+		// Jump over 12 "unknown" bytes in PDS unload
+		dummyBuffer := make([]byte, 12)
+		inFile.Read(dummyBuffer)
 	}
 
-	marshalled, err := json.MarshalIndent(c1, "", "  ")
-	log.Printf("COPYR1: %s\n", marshalled)
-	marshalled, err = json.MarshalIndent(c2, "", "  ")
-	log.Printf("COPYR2: %s\n", marshalled)
+	err = processDataRecords(inFile, members, c1.TracksPerCyl())
+	if err != nil {
+		return 0, err
+	}
+
+	for _, m := range members {
+		log.Printf("Member %-8s: TT: 0x%04x, R: 0x%02x, Ptr: %016x\n", m.memberName, m.track, m.offset, m.filePtr)
+	}
+
+	// marshalled, err := json.MarshalIndent(c1, "", "  ")
+	// log.Printf("COPYR1: %s\n", marshalled)
+	// marshalled, err = json.MarshalIndent(c2, "", "  ")
+	// log.Printf("COPYR2: %s\n", marshalled)
 	return numbytes, nil
 }
 
-func readDirBlocks(inFile io.Reader) ([]DirBlock, error) {
+func readDirBlocks(inFile os.File) ([]DirBlock, error) {
 	dirBlocks := make([]DirBlock, 0)
 	headerBuffer := make([]byte, 8)
 
@@ -112,7 +112,7 @@ func readDirBlocks(inFile io.Reader) ([]DirBlock, error) {
 		blockLen := binary.BigEndian.Uint16(headerBuffer[0:2]) - 8
 		if blockLen == 12 {
 			endDirBlocks = true
-			_, _ = inFile.Read(make([]byte, 12))
+			_, err = inFile.Read(make([]byte, 12))
 			break
 		}
 		numBlocks := blockLen / DirBlock_size
@@ -121,7 +121,7 @@ func readDirBlocks(inFile io.Reader) ([]DirBlock, error) {
 			_, err := inFile.Read(db)
 			if err == nil {
 				dirBlocks = append(dirBlocks, DirBlock(db))
-				// log.Printf("\n%s\n", hexdump.HexDump(db, ebcdic.EBCDIC037))
+				// fmt.Println(hexdump.HexDump(db, ebcdic.EBCDIC037))
 			} else if err == io.EOF {
 				endDirBlocks = true
 			} else {
@@ -134,4 +134,99 @@ func readDirBlocks(inFile io.Reader) ([]DirBlock, error) {
 
 	}
 	return dirBlocks, nil
+}
+
+func processDirBlocks(blocks []DirBlock) (MemberMap, error) {
+	entries := make(map[uint32]MemberEntry, len(blocks))
+
+	for _, b := range blocks {
+		bbuff := bytes.NewBuffer(b[:])
+		_ = bbuff.Next(12)
+		lastEntry, _ := ebcdic.Decode(bbuff.Next(8), ebcdic.EBCDIC037)
+		_ = bbuff.Next(2)
+		endBlock := false
+		for !endBlock {
+			next8 := bbuff.Next(8)
+			if bytes.Equal(next8, []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}) {
+				break
+			}
+			currEntry, _ := ebcdic.Decode(next8, ebcdic.EBCDIC037)
+			tt := binary.BigEndian.Uint16(bbuff.Next(2))
+			r, _ := bbuff.ReadByte()
+			entry := MemberEntry{
+				memberName: currEntry,
+				track:      tt,
+				offset:     r,
+			}
+			ttr := uint32(tt<<8 + uint16(r))
+			entries[ttr] = entry
+			if currEntry == lastEntry {
+				break
+			}
+			// Skip user data if present
+			c, _ := bbuff.ReadByte()
+			userDataBytes := c & 0b00011111 * 2 // A mainframe halfword = 2 bytes
+			_ = bbuff.Next(int(userDataBytes))
+		}
+	}
+	return entries, nil
+}
+
+func processDataRecords(inFile os.File, members MemberMap, tpc uint16) error {
+
+	// Read rest of records
+	// The "header" portion is always 8 bytes
+	rechead := make([]byte, 8)
+	end_records := false
+	for !end_records {
+		currOffset, err := inFile.Seek(0, io.SeekCurrent)
+		if err != nil {
+			return err
+		}
+		l, err := inFile.Read(rechead)
+		if l != 8 || err != nil {
+			if err == io.EOF {
+				break
+			}
+			log.Fatalf("Error reading record head, read %d byres: %v", l, err)
+		}
+		hbuff := bytes.NewBuffer(rechead)
+		reclen := binary.BigEndian.Uint16(hbuff.Next(2))
+		if reclen == 20 {
+			// This is an end-of-member marker record, we skip it
+			inFile.Read(make([]byte, 12))
+			continue
+		}
+		_ = hbuff.Next(6)
+		// Next byte will tell us if we are dealing with a member data record
+		memberDataBuff := bytes.NewBuffer(make([]byte, reclen-8))
+		_, err = inFile.Read(memberDataBuff.Bytes())
+		if err != nil {
+			return err
+		}
+		t, _ := memberDataBuff.ReadByte()
+		if t != 0x00 {
+			// Not a member data record, ignore
+			continue
+		} else {
+			memberDataBuff.Next(3) // Skip MBB
+			cc := binary.BigEndian.Uint16(memberDataBuff.Next(2))
+			hh := binary.BigEndian.Uint16(memberDataBuff.Next(2))
+			tt := cc*tpc + hh
+			r, _ := memberDataBuff.ReadByte()
+			ttr := uint32(tt<<8 + uint16(r))
+			m, ok := members[ttr]
+			if !ok {
+				log.Printf("Member with ttr %04x:%02x not found. len=%d, offset=%d\n", ttr>>8, ttr&0xff, reclen, currOffset)
+				log.Printf("\n%s", hexdump.HexDump(memberDataBuff.Bytes()[0:64], ebcdic.EBCDIC037))
+			} else {
+				log.Printf("Member with ttr %04x:%02x found (%s), len=%d, offset=%d\n", ttr>>8, ttr&0xff, m.memberName, reclen, currOffset)
+				log.Printf("\n%s", hexdump.HexDump(memberDataBuff.Bytes()[0:64], ebcdic.EBCDIC037))
+				m.filePtr = currOffset
+				members[ttr] = m
+			}
+
+		}
+	}
+	return nil
 }
