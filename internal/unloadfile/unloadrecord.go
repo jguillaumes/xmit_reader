@@ -135,41 +135,53 @@ func NewCopyr1(raw []byte) (Copyr1, error) {
 	return c, nil
 }
 
-type Copyr2 interface {
-	DebTail() []byte
-	DebExt() [][]byte
-}
-
 const Copyr2_size = 284
 
-type copyr2Impl struct {
-	Copyr2   `json:"-"`
-	DebTailS []byte   `json:"debtail"`
-	DebExtS  [][]byte `json:"debext"`
+type Copyr2 struct {
+	DebTailS   []byte          `json:"debtail"`
+	Extensions []ExtensionData `json:"extensions"`
 }
 
-func (c *copyr2Impl) DebTail() []byte  { return c.DebTailS }
-func (c *copyr2Impl) DebExt() [][]byte { return c.DebExtS }
+func (c *Copyr2) DebTail() []byte { return c.DebTailS }
 
-func NewCopyr2(raw []byte) (Copyr2, error) {
+func NewCopyr2(raw []byte) (*Copyr2, error) {
 	if len(raw) != Copyr2_size {
 		return nil, fmt.Errorf("invalid Copyr2 record length: expected %d, got %d", Copyr2_size, len(raw))
 	}
 	recordData := bytes.NewBuffer(raw)
+	extensions := make([]ExtensionData, 0, 16)
 
 	_ = recordData.Next(8)         // Skip the first 8 bytes (header)
 	debTail := recordData.Next(16) // Read the next 16 bytes as DebTail
-	debExt := make([][]byte, 0, 16)
 	for i := 0; i < 16; i++ {
-		debExt = append(debExt, recordData.Next(16)) // Read the next 16 bytes for each DebExt entry
+		_ = recordData.Next(5) // Skip DEBUCBAD and DEBDVMOD31
+		hiTracks, _ := recordData.ReadByte()
+		loStartCyl := binary.BigEndian.Uint16(recordData.Next(2))
+		hiStartCylTrk := binary.BigEndian.Uint16(recordData.Next(2))
+		loEndCyl := binary.BigEndian.Uint16(recordData.Next(2))
+		hiEndCylTrk := binary.BigEndian.Uint16(recordData.Next(2))
+		loTracks := binary.BigEndian.Uint16(recordData.Next(2))
+		tracks := uint32(loTracks) + (uint32(hiTracks) << 16)
+		startCyl := uint32(loStartCyl) + (uint32(hiStartCylTrk&0xFFF0) << 12)
+		startTrack := uint8(hiStartCylTrk & 0x0F)
+		endCyl := uint32(loEndCyl) + (uint32(hiEndCylTrk&0xFFF0) << 12)
+		endTrack := uint8(hiEndCylTrk & 0x0F)
+		extension := ExtensionData{
+			NumTracks:     tracks,
+			StartCylinder: startCyl,
+			StartTrack:    startTrack,
+			EndCylinder:   endCyl,
+			EndTrack:      endTrack,
+		}
+		extensions = append(extensions, extension)
 	}
 
-	c := &copyr2Impl{
-		DebTailS: debTail,
-		DebExtS:  debExt,
+	c := Copyr2{
+		DebTailS:   debTail,
+		Extensions: extensions,
 	}
 
-	return c, nil
+	return &c, nil
 }
 
 const DirBlock_size = 276
@@ -184,3 +196,11 @@ type MemberEntry struct {
 }
 
 type MemberMap map[uint32]MemberEntry
+
+type ExtensionData struct {
+	NumTracks     uint32 `json:"numtracks"`
+	StartCylinder uint32 `json:"startcylinder"`
+	StartTrack    uint8  `json:"starttrack"`
+	EndCylinder   uint32 `json:"endcylinder"`
+	EndTrack      uint8  `json:"endtrack"`
+}

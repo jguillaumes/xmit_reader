@@ -34,9 +34,6 @@ func ProcessUnloadFile(inFile os.File, targetDir string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	marshalled, _ := json.MarshalIndent(c1, "", "  ")
-
-	log.Println(marshalled)
 
 	//+
 	// Read COPYR2 record
@@ -55,6 +52,10 @@ func ProcessUnloadFile(inFile os.File, targetDir string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+
+	marshalled, _ := json.MarshalIndent(c2, "", "  ")
+
+	log.Println(string(marshalled))
 
 	dirBlocks, err := readDirBlocks(inFile)
 	if err != nil {
