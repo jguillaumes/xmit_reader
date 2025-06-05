@@ -8,49 +8,27 @@ import (
 	xu "github.com/jguillaumes/xmit_reader/internal/xmitutils"
 )
 
-type Copyr1 interface {
-	DsFlags() uint8
-	IsPdse() bool
-	DsOrg() string
-	DsBlksize() uint16
-	DsLrecl() uint16
-	DsRecfm() string
-	DvaClass() string
-	DvaUnit() string
-	MaxBlock() uint16
-	NumCylinders() uint16
-	TracksPerCyl() uint16
-}
-
 const Copyr1_size = 64
 
-type copyr1Impl struct {
-	Copyr1     `json:"-"`
-	DsFlagsB   uint8  `json:"dsflags"`
-	DsOrgS     string `json:"dsorg"`
-	DsBlkSizeS uint16 `json:"dsblksize"`
-	DsLreclS   uint16 `json:"dslrecl"`
-	DsRecfmS   string `json:"dsrecfm"`
-	DvaClassS  string `json:"dvaclass"`
-	DvaUnitS   string `json:"dvaunit"`
-	MaxBlockH  uint16 `json:"maxblock"`
-	NumCylsH   uint16 `json:"numcylinders"`
-	TperCyl    uint16 `json:"trackspercyl"`
+type Copyr1 struct {
+	DsFlags      uint8  `json:"dsflags"`
+	DsOrg        string `json:"dsorg"`
+	DsBlkSize    uint16 `json:"dsblksize"`
+	DsLrecl      uint16 `json:"dslrecl"`
+	DsRecfm      string `json:"dsrecfm"`
+	DvaClass     string `json:"dvaclass"`
+	DvaUnit      string `json:"dvaunit"`
+	MaxBlock     uint16 `json:"maxblock"`
+	MaxTrack     uint16 `json:"maxtrack"`
+	NumCyls      uint16 `json:"numcylinders"`
+	TracksPerCyl uint16 `json:"trackspercyl"`
 }
 
-func (c *copyr1Impl) DsFlags() uint8       { return c.DsFlagsB }
-func (c *copyr1Impl) IsPdse() bool         { return c.DsFlagsB&0x01 != 0 }
-func (c *copyr1Impl) DsOrg() string        { return c.DsOrgS }
-func (c *copyr1Impl) DsBlksize() uint16    { return c.DsBlkSizeS }
-func (c *copyr1Impl) DsLrecl() uint16      { return c.DsLreclS }
-func (c *copyr1Impl) DsRecfm() string      { return c.DsRecfmS }
-func (c *copyr1Impl) DvaClass() string     { return c.DvaClassS }
-func (c *copyr1Impl) DvaUnit() string      { return c.DvaUnitS }
-func (c *copyr1Impl) MaxBlock() uint16     { return c.MaxBlockH }
-func (c *copyr1Impl) NumCylinders() uint16 { return c.NumCylsH }
-func (c *copyr1Impl) TracksPerCyl() uint16 { return c.TperCyl }
+func (c *Copyr1) IsPdse() bool {
+	return c.DsFlags&0x01 != 0
+}
 
-func NewCopyr1(raw []byte) (Copyr1, error) {
+func NewCopyr1(raw []byte) (*Copyr1, error) {
 	if len(raw) != Copyr1_size {
 		return nil, fmt.Errorf("invalid Copyr1 record length: expected %d, got %d", Copyr1_size, len(raw))
 	}
@@ -115,21 +93,23 @@ func NewCopyr1(raw []byte) (Copyr1, error) {
 	max_block := binary.BigEndian.Uint32(recordData.Next(4))
 	num_cyls := binary.BigEndian.Uint16(recordData.Next(2))
 	tracks_per_cyl := binary.BigEndian.Uint16(recordData.Next(2))
-	_ = recordData.Next(3) // SKip remaining words
+	max_track := binary.BigEndian.Uint16(recordData.Next(2))
+	_ = recordData.Next(6) // SKip remaining bytes
 
 	_ = dsOrgBytes // This is not used in the current implementation, but could be used to derive the DSORG string.
 
-	c := &copyr1Impl{
-		DsFlagsB:   dsFlags,
-		DsOrgS:     "",
-		DsBlkSizeS: blkSize,
-		DsLreclS:   lrecl,
-		DsRecfmS:   xu.RecfmByteToString(recfmByte),
-		DvaClassS:  dva_class,
-		DvaUnitS:   dva_unit,
-		MaxBlockH:  uint16(max_block),
-		NumCylsH:   num_cyls,
-		TperCyl:    tracks_per_cyl,
+	c := &Copyr1{
+		DsFlags:      dsFlags,
+		DsOrg:        "",
+		DsBlkSize:    blkSize,
+		DsLrecl:      lrecl,
+		DsRecfm:      xu.RecfmByteToString(recfmByte),
+		DvaClass:     dva_class,
+		DvaUnit:      dva_unit,
+		MaxBlock:     uint16(max_block),
+		MaxTrack:     max_track,
+		NumCyls:      num_cyls,
+		TracksPerCyl: tracks_per_cyl,
 	}
 
 	return c, nil
@@ -162,9 +142,9 @@ func NewCopyr2(raw []byte) (*Copyr2, error) {
 		hiEndCylTrk := binary.BigEndian.Uint16(recordData.Next(2))
 		loTracks := binary.BigEndian.Uint16(recordData.Next(2))
 		tracks := uint32(loTracks) + (uint32(hiTracks) << 16)
-		startCyl := uint32(loStartCyl) + (uint32(hiStartCylTrk&0xFFF0) << 12)
+		startCyl := uint32(loStartCyl) + uint32((hiStartCylTrk&0xFFF0)<<12)
 		startTrack := uint8(hiStartCylTrk & 0x0F)
-		endCyl := uint32(loEndCyl) + (uint32(hiEndCylTrk&0xFFF0) << 12)
+		endCyl := uint32(loEndCyl) + uint32((hiEndCylTrk&0xFFF0)<<12)
 		endTrack := uint8(hiEndCylTrk & 0x0F)
 		extension := ExtensionData{
 			NumTracks:     tracks,

@@ -1,5 +1,0 @@
-# github.com/jguillaumes/xmit_reader/internal/unloadfile
-internal/unloadfile/unloadhandling.go:131:58: undefined: err
-internal/unloadfile/unloadhandling.go:163:9: not enough return values
-	have ([]MemberEntry)
-	want ([]MemberEntry, unknown type)

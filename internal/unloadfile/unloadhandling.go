@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"sort"
 
 	// "encoding/json"
 	"fmt"
@@ -53,8 +54,10 @@ func ProcessUnloadFile(inFile os.File, targetDir string) (int, error) {
 		return 0, err
 	}
 
-	marshalled, _ := json.MarshalIndent(c2, "", "  ")
+	marshalled, _ := json.MarshalIndent(c1, "", "  ")
+	log.Println(string(marshalled))
 
+	marshalled, _ = json.MarshalIndent(c2, "", "  ")
 	log.Println(string(marshalled))
 
 	dirBlocks, err := readDirBlocks(inFile)
@@ -78,13 +81,25 @@ func ProcessUnloadFile(inFile os.File, targetDir string) (int, error) {
 		inFile.Read(dummyBuffer)
 	}
 
-	err = processDataRecords(inFile, members, c1.TracksPerCyl())
+	err = processDataRecords(inFile, members, c1.TracksPerCyl, c1, c2)
 	if err != nil {
 		return 0, err
 	}
 
-	for _, m := range members {
-		log.Printf("Member %-8s: TT: 0x%04x, R: 0x%02x, Ptr: %016x\n", m.memberName, m.track, m.offset, m.filePtr)
+	keys := make([]uint32, 0, len(members))
+	for k := range members {
+		keys = append(keys, k)
+	}
+	sort.SliceStable(keys, func(i, j int) bool {
+		//		return members[keys[i]].memberName < members[keys[j]].memberName
+		var ttri uint32 = (uint32(members[keys[i]].track) << 8) + uint32(members[keys[i]].offset)
+		var ttrj uint32 = (uint32(members[keys[j]].track) << 8) + uint32(members[keys[j]].offset)
+		return ttri < ttrj
+	})
+
+	for k := range keys {
+		m := members[keys[k]]
+		log.Printf("Member %-8s(%06x): TT: 0x%04x, R: 0x%02x, Ptr: %016x\n", m.memberName, keys[k], m.track, m.offset, m.filePtr)
 	}
 
 	// marshalled, err := json.MarshalIndent(c1, "", "  ")
@@ -159,7 +174,7 @@ func processDirBlocks(blocks []DirBlock) (MemberMap, error) {
 				track:      tt,
 				offset:     r,
 			}
-			ttr := uint32(tt<<8 + uint16(r))
+			ttr := uint32(tt)<<8 + uint32(r)
 			entries[ttr] = entry
 			if currEntry == lastEntry {
 				break
@@ -173,7 +188,7 @@ func processDirBlocks(blocks []DirBlock) (MemberMap, error) {
 	return entries, nil
 }
 
-func processDataRecords(inFile os.File, members MemberMap, tpc uint16) error {
+func processDataRecords(inFile os.File, members MemberMap, tpc uint16, cr1 *Copyr1, cr2 *Copyr2) error {
 
 	// Read rest of records
 	// The "header" portion is always 8 bytes
@@ -210,15 +225,23 @@ func processDataRecords(inFile os.File, members MemberMap, tpc uint16) error {
 			// Not a member data record, ignore
 			continue
 		} else {
-			memberDataBuff.Next(3) // Skip MBB
-			cc := binary.BigEndian.Uint16(memberDataBuff.Next(2))
-			hh := binary.BigEndian.Uint16(memberDataBuff.Next(2))
-			tt := cc*tpc + hh
+			memberDataBuff.Next(3)                                        // Skip MBB
+			cc := uint32(binary.BigEndian.Uint16(memberDataBuff.Next(2))) // Low 16 bits of cyl
+			hh := binary.BigEndian.Uint16(memberDataBuff.Next(2))         // 12 hi bits of cyl + 4 bits of track/head
+			cch := (hh & 0xFFF0) << 12                                    // Hi 12 bits of cyl (zero for non extended vols)
+			ccl := cc + uint32(cch)                                       // Full cylinder number
+			hht := 0x0F & hh                                              // Track/head number
+
+			tt, err := findRelativeTrack(ccl, hht, cr1, cr2)
+			if err != nil {
+				log.Printf("Cannot find relative track for cyl=%04x, head=%04x", cc, hh)
+				continue
+			}
 			r, _ := memberDataBuff.ReadByte()
-			ttr := uint32(tt<<8 + uint16(r))
+			ttr := tt<<8 + uint32(r)
 			m, ok := members[ttr]
 			if !ok {
-				log.Printf("Member with ttr %04x:%02x not found. len=%d, offset=%d\n", ttr>>8, ttr&0xff, reclen, currOffset)
+				log.Printf("Member with ttr %04x:%02x not found. len=%d, offset=%d (%04x%04x%02x)\n", ttr>>8, ttr&0xff, reclen, currOffset, cc, hh, r)
 				log.Printf("\n%s", hexdump.HexDump(memberDataBuff.Bytes()[0:64], ebcdic.EBCDIC037))
 			} else {
 				log.Printf("Member with ttr %04x:%02x found (%s), len=%d, offset=%d\n", ttr>>8, ttr&0xff, m.memberName, reclen, currOffset)
@@ -230,4 +253,19 @@ func processDataRecords(inFile os.File, members MemberMap, tpc uint16) error {
 		}
 	}
 	return nil
+}
+
+func findRelativeTrack(cc uint32, hh uint16, c1 *Copyr1, c2 *Copyr2) (uint32, error) {
+	exts := &c2.Extensions
+
+	var relTrack uint32 = 0
+	for _, ext := range *exts {
+		if ext.StartCylinder <= cc && cc <= ext.EndCylinder {
+			relTrack += (cc-ext.StartCylinder)*uint32(c1.TracksPerCyl) + uint32(hh) - uint32(ext.StartTrack)
+			break
+		} else {
+			relTrack += uint32(c1.TracksPerCyl)
+		}
+	}
+	return uint32(relTrack), nil
 }
