@@ -169,10 +169,10 @@ const DirBlock_size = 276
 type DirBlock [DirBlock_size]byte
 
 type MemberEntry struct {
-	memberName string
-	track      uint16
-	offset     uint8
-	filePtr    int64
+	MemberName string
+	Track      uint16
+	Offset     uint8
+	FilePtr    int64
 }
 
 type MemberMap map[uint32]MemberEntry

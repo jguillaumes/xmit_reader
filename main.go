@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os"
 
@@ -68,18 +69,16 @@ func main() {
 	defer inFile.Close()
 
 	// Process the input file and generate output files
-	var count int
-	count, err = xmitfile.ProcessXMITFile(inFile, *targetDir, unloadFileHandle)
+	xmitParms, err := xmitfile.ProcessXMITFile(inFile, *targetDir, unloadFileHandle)
 	if err != nil {
 		log.Println("Error processing input file:", err.Error())
 		os.Exit(1)
 	}
 
-	if count == 0 {
-		log.Println("No members extracted from the input file.")
-	} else {
-		log.Println("Successfully processed", count, "records from the XMIT input file.")
-	}
+	xmf := xmitParms.XmitFiles[0]
+	fmt.Printf("Original dataset: %s\n", xmf.SourceDSName)
+	fmt.Printf("Dataset attributes: DSORG=%s, DSTYPE =%s, RECFM=%s, LRECL=%d, BLKSIZE=%d\n",
+		xmf.SourceDsorg, xmf.SourceDstype, xmf.SourceRecfm, xmf.SourceLrecl, xmf.SourceBlksize)
 
 	// Close the unload file handle
 	if err := unloadFileHandle.Close(); err != nil {
@@ -94,7 +93,7 @@ func main() {
 	}
 	defer unloadFileHandle.Close()
 
-	_, err = unloadfile.ProcessUnloadFile(*unloadFileHandle, *targetDir)
+	_, err = unloadfile.ProcessUnloadFile(*unloadFileHandle, *targetDir, xmf)
 
 	if deleteUnloadFile {
 		// Delete the unload file if it was created as a temporary file
