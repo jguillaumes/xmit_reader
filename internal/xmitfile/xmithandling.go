@@ -10,8 +10,11 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/jguillaumes/go-ebcdic"
+	e "github.com/jguillaumes/go-encoding/encodings"
 	xu "github.com/jguillaumes/xmit_reader/internal/xmitutils"
 )
+
+var enc = e.NewEncoding()
 
 type XmitFileParams struct {
 	SourceDDName   string    `json:"ddame"`
@@ -43,7 +46,7 @@ func NewXmitParams() *XmitParams {
 	}
 }
 
-func ProcessXMITFile(inFile io.Reader, targetDir string, unloadFile io.Writer) (*XmitParams, error) {
+func ProcessXMITFile(inFile io.Reader, targetDir string, unloadFile io.Writer, encoding string) (*XmitParams, error) {
 
 	count := 0
 	xmitParms := *NewXmitParams()
@@ -67,15 +70,15 @@ func ProcessXMITFile(inFile io.Reader, targetDir string, unloadFile io.Writer) (
 					nb := xtud.Len
 					xmitParms.NumFiles = xu.GetVariableLengthInt(int(nb), xtud.Data)
 				case XtuINMFUID:
-					userId, _ := ebcdic.Decode(tu.Data()[0].Data, ebcdic.EBCDIC037)
+					userId, _ := enc.DecodeBytes(tu.Data()[0].Data, encoding)
 					xmitParms.SourceUserId = userId
 				case XtuINMFNODE:
-					nodeName, _ := ebcdic.Decode(tu.Data()[0].Data, ebcdic.EBCDIC037)
+					nodeName, _ := enc.DecodeBytes(tu.Data()[0].Data, encoding)
 					xmitParms.SourceNodeName = nodeName
 				case XtuINMFTIME:
 					tuDv := tu.Data()[0]
 					// The timestamp is in the format YYYYMMDDHHMSS in EBCDIC
-					tstamp, _ := ebcdic.Decode(tuDv.Data, ebcdic.EBCDIC037)
+					tstamp, _ := enc.DecodeBytes(tuDv.Data, encoding)
 					// Parse the timestamp
 					timestamp, err := time.Parse("20060102150405", tstamp)
 					if err != nil {

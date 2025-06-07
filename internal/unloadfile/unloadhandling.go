@@ -21,7 +21,7 @@ import (
 	xmit "github.com/jguillaumes/xmit_reader/internal/xmitfile"
 )
 
-func ProcessUnloadFile(inFile os.File, targetDir string, typeExt string, xmf xmit.XmitFileParams) (int, error) {
+func ProcessUnloadFile(inFile os.File, targetDir string, typeExt string, xmf xmit.XmitFileParams, encoding string) (int, error) {
 	var numbytes = 0
 
 	//+
@@ -74,7 +74,7 @@ func ProcessUnloadFile(inFile os.File, targetDir string, typeExt string, xmf xmi
 	if log.GetLevel() == log.TraceLevel {
 		for i, d := range dirBlocks {
 			log.Tracef("Directory block number %d\n", i)
-			log.Tracef("\n%s\n", hexdump.HexDump(d[:], ebcdic.EBCDIC037))
+			log.Tracef("\n%s\n", hexdump.HexDump(d[:], encoding))
 		}
 	}
 
@@ -89,12 +89,12 @@ func ProcessUnloadFile(inFile os.File, targetDir string, typeExt string, xmf xmi
 		inFile.Read(dummyBuffer)
 	}
 
-	err = processDataRecords(inFile, members, c1.TracksPerCyl, c1, c2)
+	err = processDataRecords(inFile, members, c1.TracksPerCyl, c1, c2, encoding)
 	if err != nil {
 		return 0, err
 	}
 
-	_, err = GenerateFiles(members, &inFile, targetDir, typeExt, xmf)
+	_, err = GenerateFiles(members, &inFile, targetDir, typeExt, xmf, encoding)
 	if err != nil {
 		return 0, err
 	}
@@ -159,7 +159,7 @@ func readDirBlocks(inFile os.File) ([]DirBlock, error) {
 			_, err := inFile.Read(db)
 			if err == nil {
 				dirBlocks = append(dirBlocks, DirBlock(db))
-				log.Traceln(hexdump.HexDump(db, ebcdic.EBCDIC037))
+				log.Traceln(hexdump.HexDump(db, "IBM-1047"))
 			} else if err == io.EOF {
 				endDirBlocks = true
 			} else {
@@ -210,7 +210,7 @@ func processDirBlocks(blocks []DirBlock) (MemberMap, error) {
 	return entries, nil
 }
 
-func processDataRecords(inFile os.File, members MemberMap, tpc uint16, cr1 *Copyr1, cr2 *Copyr2) error {
+func processDataRecords(inFile os.File, members MemberMap, tpc uint16, cr1 *Copyr1, cr2 *Copyr2, encoding string) error {
 
 	// Read rest of records
 	// The "header" portion is always 8 bytes
@@ -264,10 +264,10 @@ func processDataRecords(inFile os.File, members MemberMap, tpc uint16, cr1 *Copy
 			m, ok := members[ttr]
 			if !ok {
 				log.Warnf("Member with ttr %04x:%02x not found. len=%d, offset=%d (%04x%04x%02x)\n", ttr>>8, ttr&0xff, reclen, currOffset, cc, hh, r)
-				log.Warnf("\n%s", hexdump.HexDump(memberDataBuff.Bytes()[0:64], ebcdic.EBCDIC037))
+				log.Warnf("\n%s", hexdump.HexDump(memberDataBuff.Bytes()[0:64], encoding))
 			} else {
 				log.Debugf("Member with ttr %04x:%02x found (%s), len=%d, offset=%d\n", ttr>>8, ttr&0xff, m.MemberName, reclen, currOffset)
-				log.Debugf("\n%s", hexdump.HexDump(memberDataBuff.Bytes()[0:64], ebcdic.EBCDIC037))
+				log.Debugf("\n%s", hexdump.HexDump(memberDataBuff.Bytes()[0:64], encoding))
 				m.FilePtr = currOffset
 				members[ttr] = m
 			}

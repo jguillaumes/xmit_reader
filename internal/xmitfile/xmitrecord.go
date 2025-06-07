@@ -3,7 +3,6 @@ package xmitfile
 import (
 	"io"
 
-	ebcdic "github.com/jguillaumes/go-ebcdic"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -48,7 +47,8 @@ func (x *XMITRecordImpl) recordId() string {
 	idBytes := x.recordDataValue[:6]
 
 	// Translate from EBCDIC (1047) to ASCII (UTF-8)
-	id, err := ebcdic.Decode(idBytes, ebcdic.EBCDIC037)
+	// enc is a module level variable declared in xmithandling.go
+	id, err := enc.DecodeBytes(idBytes, "IBM-1047")
 	if err != nil {
 		return ""
 	}

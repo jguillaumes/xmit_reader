@@ -13,11 +13,14 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/jguillaumes/go-ebcdic"
+	e "github.com/jguillaumes/go-encoding/encodings"
 	"github.com/jguillaumes/go-hexdump"
 	xmit "github.com/jguillaumes/xmit_reader/internal/xmitfile"
 )
 
-func GenerateFiles(mMap MemberMap, unlFile *os.File, outdir string, extension string, xmf xmit.XmitFileParams) (int, error) {
+var enc = e.NewEncoding()
+
+func GenerateFiles(mMap MemberMap, unlFile *os.File, outdir string, extension string, xmf xmit.XmitFileParams, encoding string) (int, error) {
 	numFiles := 0
 	var err error
 	for _, m := range mMap {
@@ -25,7 +28,7 @@ func GenerateFiles(mMap MemberMap, unlFile *os.File, outdir string, extension st
 		filepos := m.FilePtr
 		fileName := filepath.Join(outdir, strings.Trim(mName, " ")+"."+strings.Trim(extension, " "))
 
-		err = writeMember(unlFile, filepos, fileName, xmf)
+		err = writeMember(unlFile, filepos, fileName, xmf, encoding)
 		if err == nil {
 			numFiles++
 		} else {
@@ -35,7 +38,7 @@ func GenerateFiles(mMap MemberMap, unlFile *os.File, outdir string, extension st
 	return numFiles, err
 }
 
-func writeMember(f *os.File, fpos int64, outnam string, xmf xmit.XmitFileParams) error {
+func writeMember(f *os.File, fpos int64, outnam string, xmf xmit.XmitFileParams, encoding string) error {
 	log.Debugf("Writing member data to %s\n", outnam)
 	variableLength := (xmf.SourceRecfm[0] == 'V')
 	lrecl := xmf.SourceLrecl
@@ -91,7 +94,7 @@ func writeMember(f *os.File, fpos int64, outnam string, xmf xmit.XmitFileParams)
 		} else {
 			log.Debugf("Beginning of block")
 		}
-		log.Tracef("\n%s\n", hexdump.HexDump(hdr, ebcdic.EBCDIC037))
+		log.Tracef("\n%s\n", hexdump.HexDump(hdr, encoding))
 
 		recordBuffer.Reset()
 		remainingRecord := int(lrecl) // Remaining record bytes to read

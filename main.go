@@ -26,6 +26,7 @@ func main() {
 	typeExt := flag.String("type", "", "File type (to be used as extension)")
 	unloadFile := flag.String("unload", "", "Name of the IEBCOPY unload file. If not specified it will be not kept and a temporary file will be used")
 	debugFlag := flag.Bool("debug", false, "Output debug information (maybe quite verbose)")
+	encoding := flag.String("encoding", "IBM-1047", "EBCDIC encoding used in the original files. The default is IBM-1047")
 	traceFlag := flag.Bool("trace", false, "Maximum debug output. VERY verbose")
 
 	flag.Parse()
@@ -84,7 +85,7 @@ func main() {
 	defer inFile.Close()
 
 	// Process the input file and generate output files
-	xmitParms, err := xmitfile.ProcessXMITFile(inFile, *targetDir, unloadFileHandle)
+	xmitParms, err := xmitfile.ProcessXMITFile(inFile, *targetDir, unloadFileHandle, *encoding)
 	if err != nil {
 		log.Error("Error processing input file:", err.Error())
 		os.Exit(8)
@@ -94,6 +95,7 @@ func main() {
 	log.Infof("Original dataset: %s\n", xmf.SourceDSName)
 	log.Infof("Dataset attributes: DSORG=%s, DSTYPE=%s, RECFM=%s, LRECL=%d, BLKSIZE=%d\n",
 		xmf.SourceDsorg, xmf.SourceDstype, xmf.SourceRecfm, xmf.SourceLrecl, xmf.SourceBlksize)
+	log.Infof("Using codepage %s for conversion\n", *encoding)
 
 	// Close the unload file handle
 	if err := unloadFileHandle.Close(); err != nil {
@@ -108,7 +110,7 @@ func main() {
 	}
 	defer unloadFileHandle.Close()
 
-	_, err = unloadfile.ProcessUnloadFile(*unloadFileHandle, *targetDir, *typeExt, xmf)
+	_, err = unloadfile.ProcessUnloadFile(*unloadFileHandle, *targetDir, *typeExt, xmf, *encoding)
 	if err != nil && err != io.EOF {
 		log.Errorln(err)
 		rc = 8
