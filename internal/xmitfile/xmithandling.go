@@ -9,7 +9,6 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/jguillaumes/go-ebcdic"
 	e "github.com/jguillaumes/go-encoding/encodings"
 	xu "github.com/jguillaumes/xmit_reader/internal/xmitutils"
 )
@@ -96,7 +95,7 @@ func ProcessXMITFile(inFile io.Reader, targetDir string, unloadFile io.Writer, e
 				tu := tus[t]
 				switch tu.Id() {
 				case XtuINMUTILN:
-					utilPgmName, _ := ebcdic.Decode(tu.Data()[0].Data, ebcdic.EBCDIC037)
+					utilPgmName, _ := enc.DecodeBytes(tu.Data()[0].Data, "IBM-1047")
 					fileParams.UtilPgmName = utilPgmName
 				case XtuINMDSORG:
 					dsorgBytes := xu.GetVariableLengthInt(2, tu.Data()[0].Data)
@@ -131,7 +130,7 @@ func ProcessXMITFile(inFile io.Reader, targetDir string, unloadFile io.Writer, e
 				case XtuINMCREAT:
 					tuDv := tu.Data()[0]
 					// The creation date is in the format YYYYMMDD in EBCDIC
-					creationDate, _ := ebcdic.Decode(tuDv.Data, ebcdic.EBCDIC037)
+					creationDate, _ := enc.DecodeBytes(tuDv.Data, "IBM-1047")
 					// Parse the creation date
 					creation, _ := time.Parse("20060102", creationDate)
 					fileParams.SourceCreation = creation
@@ -148,14 +147,14 @@ func ProcessXMITFile(inFile io.Reader, targetDir string, unloadFile io.Writer, e
 					aproxSizeBytes := xu.GetVariableLengthInt(int(tuDv.Len), tuDv.Data)
 					fileParams.AproxSize = int64(aproxSizeBytes)
 				case XtuINMDDNAM:
-					ddname, _ := ebcdic.Decode(tu.Data()[0].Data, ebcdic.EBCDIC037)
+					ddname, _ := enc.DecodeBytes(tu.Data()[0].Data, encoding)
 					fileParams.SourceDDName = ddname
 				case XtuINMDSNAM:
 					parts := tus[t].Count()
 					var dsname string
 					for i := uint16(0); i < parts; i++ {
 						partData := tus[t].Data()[i]
-						partName, _ := ebcdic.Decode(partData.Data, ebcdic.EBCDIC037)
+						partName, _ := enc.DecodeBytes(partData.Data, encoding)
 						dsname += partName
 						if i < parts-1 {
 							dsname += "."

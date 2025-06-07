@@ -16,7 +16,6 @@ import (
 
 	"os"
 
-	"github.com/jguillaumes/go-ebcdic"
 	"github.com/jguillaumes/go-hexdump"
 	xmit "github.com/jguillaumes/xmit_reader/internal/xmitfile"
 )
@@ -78,7 +77,7 @@ func ProcessUnloadFile(inFile os.File, targetDir string, typeExt string, xmf xmi
 		}
 	}
 
-	members, err := processDirBlocks(dirBlocks)
+	members, err := processDirBlocks(dirBlocks, encoding)
 	if err != nil {
 		return 0, err
 	}
@@ -174,13 +173,13 @@ func readDirBlocks(inFile os.File) ([]DirBlock, error) {
 	return dirBlocks, nil
 }
 
-func processDirBlocks(blocks []DirBlock) (MemberMap, error) {
+func processDirBlocks(blocks []DirBlock, encoding string) (MemberMap, error) {
 	entries := make(map[uint32]MemberEntry, len(blocks))
 
 	for _, b := range blocks {
 		bbuff := bytes.NewBuffer(b[:])
 		_ = bbuff.Next(12)
-		lastEntry, _ := ebcdic.Decode(bbuff.Next(8), ebcdic.EBCDIC037)
+		lastEntry, _ := enc.DecodeBytes(bbuff.Next(8), encoding)
 		_ = bbuff.Next(2)
 		endBlock := false
 		for !endBlock {
@@ -188,7 +187,7 @@ func processDirBlocks(blocks []DirBlock) (MemberMap, error) {
 			if bytes.Equal(next8, []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}) {
 				break
 			}
-			currEntry, _ := ebcdic.Decode(next8, ebcdic.EBCDIC037)
+			currEntry, _ := enc.DecodeBytes(next8, encoding)
 			tt := binary.BigEndian.Uint16(bbuff.Next(2))
 			r, _ := bbuff.ReadByte()
 			entry := MemberEntry{
