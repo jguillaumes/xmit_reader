@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"io"
 	"os"
 
 	log "github.com/sirupsen/logrus"
@@ -16,20 +17,16 @@ func main() {
 	logf := log.TextFormatter{
 		PadLevelText:           true,
 		DisableLevelTruncation: true,
-		FullTimestamp:          true,
 	}
 
 	log.SetFormatter(&logf)
-	log.SetReportCaller(false)
-
-	// Command line arguments:
-	// --input <input_file>: The input XMIT file to process.
-	// --target <target_directory>: The directory where the output files will be saved.
 
 	inputFile := flag.String("input", "", "Input XMIT file to be processed")
 	targetDir := flag.String("target", "", "Path to the output directory")
+	typeExt := flag.String("type", "", "File type (to be used as extension)")
 	unloadFile := flag.String("unload", "", "Name of the IEBCOPY unload file. If not specified it will be not kept and a temporary file will be used")
 	debugFlag := flag.Bool("debug", false, "Output debug information (maybe quite verbose)")
+	traceFlag := flag.Bool("trace", false, "Maximum debug output. VERY verbose")
 
 	flag.Parse()
 
@@ -37,10 +34,15 @@ func main() {
 		log.SetLevel(log.DebugLevel)
 	}
 
+	if *traceFlag {
+		log.SetLevel(log.TraceLevel)
+		log.SetReportCaller(true)
+	}
+
 	var deleteUnloadFile bool = true
 
-	// Check if input file and target directory are provided
-	if *inputFile == "" || *targetDir == "" {
+	// Check if input file, target directory and file type are provided
+	if *inputFile == "" || *targetDir == "" || *typeExt == "" {
 		flag.Usage()
 		os.Exit(16)
 	}
@@ -90,7 +92,7 @@ func main() {
 
 	xmf := xmitParms.XmitFiles[0]
 	log.Infof("Original dataset: %s\n", xmf.SourceDSName)
-	log.Infof("Dataset attributes: DSORG=%s, DSTYPE =%s, RECFM=%s, LRECL=%d, BLKSIZE=%d\n",
+	log.Infof("Dataset attributes: DSORG=%s, DSTYPE=%s, RECFM=%s, LRECL=%d, BLKSIZE=%d\n",
 		xmf.SourceDsorg, xmf.SourceDstype, xmf.SourceRecfm, xmf.SourceLrecl, xmf.SourceBlksize)
 
 	// Close the unload file handle
@@ -106,8 +108,8 @@ func main() {
 	}
 	defer unloadFileHandle.Close()
 
-	_, err = unloadfile.ProcessUnloadFile(*unloadFileHandle, *targetDir, xmf)
-	if err != nil {
+	_, err = unloadfile.ProcessUnloadFile(*unloadFileHandle, *targetDir, *typeExt, xmf)
+	if err != nil && err != io.EOF {
 		log.Errorln(err)
 		rc = 8
 	}

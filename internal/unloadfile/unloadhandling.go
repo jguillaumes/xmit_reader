@@ -21,7 +21,7 @@ import (
 	xmit "github.com/jguillaumes/xmit_reader/internal/xmitfile"
 )
 
-func ProcessUnloadFile(inFile os.File, targetDir string, xmf xmit.XmitFileParams) (int, error) {
+func ProcessUnloadFile(inFile os.File, targetDir string, typeExt string, xmf xmit.XmitFileParams) (int, error) {
 	var numbytes = 0
 
 	//+
@@ -59,7 +59,7 @@ func ProcessUnloadFile(inFile os.File, targetDir string, xmf xmit.XmitFileParams
 		return 0, err
 	}
 
-	if log.GetLevel() == log.DebugLevel {
+	if log.GetLevel() >= log.DebugLevel {
 		marshalled, _ := json.MarshalIndent(c1, "", "  ")
 		log.Debugln(string(marshalled))
 
@@ -94,7 +94,7 @@ func ProcessUnloadFile(inFile os.File, targetDir string, xmf xmit.XmitFileParams
 		return 0, err
 	}
 
-	_, err = GenerateFiles(members, &inFile, "", "", xmf)
+	_, err = GenerateFiles(members, &inFile, targetDir, typeExt, xmf)
 	if err != nil {
 		return 0, err
 	}
@@ -119,7 +119,7 @@ func ProcessUnloadFile(inFile os.File, targetDir string, xmf xmit.XmitFileParams
 		}
 	}
 
-	if log.GetLevel() == log.DebugLevel {
+	if log.GetLevel() >= log.DebugLevel {
 		marshalled, _ := json.MarshalIndent(c1, "", "  ")
 		log.Debugf("COPYR1: %s\n", marshalled)
 		marshalled, _ = json.MarshalIndent(c2, "", "  ")
