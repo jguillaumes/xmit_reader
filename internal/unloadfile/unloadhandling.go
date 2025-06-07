@@ -3,18 +3,21 @@ package unloadfile
 import (
 	"bytes"
 	"encoding/binary"
+	"sort"
 
-	// "encoding/json"
+	"encoding/json"
 	// "sort"
 
 	// "encoding/json"
 	"fmt"
 	"io"
-	"log"
+
+	log "github.com/sirupsen/logrus"
+
 	"os"
 
 	"github.com/jguillaumes/go-ebcdic"
-	_ "github.com/jguillaumes/go-hexdump"
+	"github.com/jguillaumes/go-hexdump"
 	xmit "github.com/jguillaumes/xmit_reader/internal/xmitfile"
 )
 
@@ -56,21 +59,24 @@ func ProcessUnloadFile(inFile os.File, targetDir string, xmf xmit.XmitFileParams
 		return 0, err
 	}
 
-	// marshalled, _ := json.MarshalIndent(c1, "", "  ")
-	// log.Println(string(marshalled))
+	if log.GetLevel() == log.DebugLevel {
+		marshalled, _ := json.MarshalIndent(c1, "", "  ")
+		log.Debugln(string(marshalled))
 
-	// marshalled, _ = json.MarshalIndent(c2, "", "  ")
-	// log.Println(string(marshalled))
-
+		marshalled, _ = json.MarshalIndent(c2, "", "  ")
+		log.Debugln(string(marshalled))
+	}
 	dirBlocks, err := readDirBlocks(inFile)
 	if err != nil {
 		return 0, err
 	}
 
-	// for i, d := range dirBlocks {
-	// 	log.Printf("Directory block number %d\n", i)
-	// 	log.Printf("\n%s\n", hexdump.HexDump(d[:], ebcdic.EBCDIC037))
-	// }
+	if log.GetLevel() == log.TraceLevel {
+		for i, d := range dirBlocks {
+			log.Tracef("Directory block number %d\n", i)
+			log.Tracef("\n%s\n", hexdump.HexDump(d[:], ebcdic.EBCDIC037))
+		}
+	}
 
 	members, err := processDirBlocks(dirBlocks)
 	if err != nil {
@@ -88,12 +94,13 @@ func ProcessUnloadFile(inFile os.File, targetDir string, xmf xmit.XmitFileParams
 		return 0, err
 	}
 
-	n, err = GenerateFiles(members, &inFile, "", "", xmf)
+	_, err = GenerateFiles(members, &inFile, "", "", xmf)
 	if err != nil {
 		return 0, err
 	}
 
-	/*
+	if log.GetLevel() == log.TraceLevel {
+
 		keys := make([]uint32, 0, len(members))
 		for k := range members {
 			keys = append(keys, k)
@@ -110,11 +117,14 @@ func ProcessUnloadFile(inFile os.File, targetDir string, xmf xmit.XmitFileParams
 			m := members[keys[k]]
 			log.Printf("Member %-8s(%06x): TT: 0x%04x, R: 0x%02x, Ptr: %016x\n", m.MemberName, keys[k], m.Track, m.Offset, m.FilePtr)
 		}
-	*/
-	// marshalled, err := json.MarshalIndent(c1, "", "  ")
-	// log.Printf("COPYR1: %s\n", marshalled)
-	// marshalled, err = json.MarshalIndent(c2, "", "  ")
-	// log.Printf("COPYR2: %s\n", marshalled)
+	}
+
+	if log.GetLevel() == log.DebugLevel {
+		marshalled, _ := json.MarshalIndent(c1, "", "  ")
+		log.Debugf("COPYR1: %s\n", marshalled)
+		marshalled, _ = json.MarshalIndent(c2, "", "  ")
+		log.Debugf("COPYR2: %s\n", marshalled)
+	}
 	return numbytes, nil
 }
 
@@ -131,13 +141,16 @@ func readDirBlocks(inFile os.File) ([]DirBlock, error) {
 		} else if err == io.EOF {
 			endDirBlocks = true
 		} else if n != 8 {
-			return nil, fmt.Errorf("Expected 8 bytes, read %d", n)
+			return nil, fmt.Errorf("expected 8 bytes, read %d", n)
 		}
 
 		blockLen := binary.BigEndian.Uint16(headerBuffer[0:2]) - 8
 		if blockLen == 12 {
 			endDirBlocks = true
 			_, err = inFile.Read(make([]byte, 12))
+			if err != nil {
+				return nil, err
+			}
 			break
 		}
 		numBlocks := blockLen / DirBlock_size
@@ -146,7 +159,7 @@ func readDirBlocks(inFile os.File) ([]DirBlock, error) {
 			_, err := inFile.Read(db)
 			if err == nil {
 				dirBlocks = append(dirBlocks, DirBlock(db))
-				// fmt.Println(hexdump.HexDump(db, ebcdic.EBCDIC037))
+				log.Traceln(hexdump.HexDump(db, ebcdic.EBCDIC037))
 			} else if err == io.EOF {
 				endDirBlocks = true
 			} else {
@@ -243,18 +256,18 @@ func processDataRecords(inFile os.File, members MemberMap, tpc uint16, cr1 *Copy
 
 			tt, err := findRelativeTrack(ccl, hht, cr1, cr2)
 			if err != nil {
-				log.Printf("Cannot find relative track for cyl=%04x, head=%04x", cc, hh)
+				log.Warnf("Cannot find relative track for cyl=%04x, head=%04x", cc, hh)
 				continue
 			}
 			r, _ := memberDataBuff.ReadByte()
 			ttr := tt<<8 + uint32(r)
 			m, ok := members[ttr]
 			if !ok {
-				// log.Printf("Member with ttr %04x:%02x not found. len=%d, offset=%d (%04x%04x%02x)\n", ttr>>8, ttr&0xff, reclen, currOffset, cc, hh, r)
-				// log.Printf("\n%s", hexdump.HexDump(memberDataBuff.Bytes()[0:64], ebcdic.EBCDIC037))
+				log.Warnf("Member with ttr %04x:%02x not found. len=%d, offset=%d (%04x%04x%02x)\n", ttr>>8, ttr&0xff, reclen, currOffset, cc, hh, r)
+				log.Warnf("\n%s", hexdump.HexDump(memberDataBuff.Bytes()[0:64], ebcdic.EBCDIC037))
 			} else {
-				//	log.Printf("Member with ttr %04x:%02x found (%s), len=%d, offset=%d\n", ttr>>8, ttr&0xff, m.memberName, reclen, currOffset)
-				//	log.Printf("\n%s", hexdump.HexDump(memberDataBuff.Bytes()[0:64], ebcdic.EBCDIC037))
+				log.Debugf("Member with ttr %04x:%02x found (%s), len=%d, offset=%d\n", ttr>>8, ttr&0xff, m.MemberName, reclen, currOffset)
+				log.Debugf("\n%s", hexdump.HexDump(memberDataBuff.Bytes()[0:64], ebcdic.EBCDIC037))
 				m.FilePtr = currOffset
 				members[ttr] = m
 			}

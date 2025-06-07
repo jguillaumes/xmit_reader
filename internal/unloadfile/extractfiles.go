@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"io"
 
-	"log"
 	"os"
 	"path/filepath"
 
+	log "github.com/sirupsen/logrus"
+
 	"github.com/jguillaumes/go-ebcdic"
+	"github.com/jguillaumes/go-hexdump"
 	// "github.com/jguillaumes/go-hexdump"
 
 	// "github.com/jguillaumes/go-hexdump"
@@ -36,7 +38,7 @@ func GenerateFiles(mMap MemberMap, unlFile *os.File, outdir string, extension st
 }
 
 func writeMember(f *os.File, fpos int64, outnam string, xmf xmit.XmitFileParams) error {
-	log.Printf("Writing member data to %s\n", outnam)
+	log.Debugf("Writing member data to %s\n", outnam)
 	variableLength := (xmf.SourceRecfm[0] == 'V')
 	lrecl := xmf.SourceLrecl
 	recordBuffer := bytes.NewBuffer(make([]byte, 0, lrecl))
@@ -71,30 +73,31 @@ func writeMember(f *os.File, fpos int64, outnam string, xmf xmit.XmitFileParams)
 		blockFlag := hdr[0]
 		if blockFlag != 0x00 {
 			// Non member data block (notes or extended attributes), ignored
-			log.Printf("Non data bloc: %02x\n", blockFlag)
+			log.Debugf("Non data bloc: %02x\n", blockFlag)
 			continue
 		} else if memberslen == 12 {
 			// End of member marker
 			endMember = true
-			log.Println("EOB found")
+			log.Debugf("EOB found")
 			break
 		} else {
-			log.Println("Beginning of block")
+			log.Debugf("Beginning of block")
 		}
-		// fmt.Printf("\n%s\n", hexdump.HexDump(hdr, ebcdic.EBCDIC037))
+		log.Tracef("\n%s\n", hexdump.HexDump(hdr, ebcdic.EBCDIC037))
 
 		recordBuffer.Reset()
 		remainingRecord := int(lrecl) // Remaining record bytes to read
 		for memberslen > 0 {
 			blockSize := int(min(memberslen, 362))
-			log.Println("Start of MDB")
+			log.Debugf("Start of MDB")
 			block := b.Next(blockSize)
 			bb := bytes.NewBuffer(block)
 
 			sliceLen := blockSize
 			for nb := sliceLen; nb > 0; {
 				if variableLength {
-
+					log.Fatalln("Variable length records are not supported yet...")
+					panic("Variable length records are not supported yet")
 				} else {
 					n, _ := recordBuffer.Write(bb.Next(remainingRecord))
 					if n == 0 {
