@@ -13,7 +13,7 @@
             "args": [
                 "--input", "data/jgppds.xmit",
                 "--target", "work",
-                "--type", "jcl"
+                "--type", "pli"
             ]
         },
         {

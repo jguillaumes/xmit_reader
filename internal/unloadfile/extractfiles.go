@@ -12,7 +12,6 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/jguillaumes/go-ebcdic"
 	e "github.com/jguillaumes/go-encoding/encodings"
 	"github.com/jguillaumes/go-hexdump"
 	xmit "github.com/jguillaumes/xmit_reader/internal/xmitfile"
@@ -116,7 +115,7 @@ func writeMember(f *os.File, fpos int64, outnam string, xmf xmit.XmitFileParams,
 						break
 					}
 					remainingRecord -= n
-					recordLine, _ := ebcdic.Decode(recordBuffer.Bytes(), ebcdic.EBCDIC037)
+					recordLine, _ := enc.DecodeBytes(recordBuffer.Bytes(), encoding)
 					if remainingRecord == 0 {
 						fmt.Fprintln(memberFile, recordLine)
 						recordBuffer.Reset()
