@@ -3,7 +3,6 @@ package xmitfile
 import (
 	"bytes"
 	"encoding/binary"
-	"encoding/json"
 	"io"
 	"log"
 	"time"
@@ -42,15 +41,18 @@ func NewXmitParams() *XmitParams {
 	}
 }
 
-func ProcessXMITFile(inFile io.Reader, targetDir string, unloadFile io.Writer) (int, error) {
+func ProcessXMITFile(inFile io.Reader, targetDir string, unloadFile io.Writer) (*XmitParams, error) {
 
 	count := 0
 	xmitParms := *NewXmitParams()
 	var endOfXmit bool = false
 	var currentBlock *bytes.Buffer
 
-	data, err := readXMITRecord(inFile)
-	for data != nil && err == nil && !endOfXmit {
+	for !endOfXmit {
+		data, err := readXMITRecord(inFile)
+		if err != nil {
+			return nil, err
+		}
 		// fmt.Printf("Record Length: %3d, flags: %08b, id: %s\n", data.recordLen(), data.recordFlags(), data.recordId())
 		switch data.recordId() {
 		case "INMR01":
@@ -83,8 +85,7 @@ func ProcessXMITFile(inFile io.Reader, targetDir string, unloadFile io.Writer) (
 			}
 		case "INMR02":
 			var fileParams XmitFileParams
-			filenumber := binary.BigEndian.Uint32(data.recordData()[6:10])
-			log.Printf("File Number: %d\n", filenumber)
+			_ = binary.BigEndian.Uint32(data.recordData()[6:10])
 			tus := data.textUnits(4)
 			for t := range tus {
 				tu := tus[t]
@@ -166,7 +167,7 @@ func ProcessXMITFile(inFile io.Reader, targetDir string, unloadFile io.Writer) (
 		case "INMR04":
 			// User control record, ignore it
 		case "INMR06": // Last record in the XMIT file, end processing here
-			log.Println("End of XMIT file processing.")
+			// log.Println("End of XMIT file processing.")
 			endOfXmit = true
 		case "INMR07":
 			// Notification record, ignore it
@@ -187,19 +188,15 @@ func ProcessXMITFile(inFile io.Reader, targetDir string, unloadFile io.Writer) (
 			}
 		}
 		count++
-		data, err = readXMITRecord(inFile)
 	}
-	marshalled, err := json.MarshalIndent(xmitParms, "", "  ")
-	if err != nil {
-		log.Printf("Error marshalling XMIT parameters: %v\n", err)
-	} else {
-		log.Printf("XMIT parameters: %s\n", marshalled)
-	}
+	/*
+		marshalled, err := json.MarshalIndent(xmitParms, "", "  ")
+		if err != nil {
+			log.Printf("Error marshalling XMIT parameters: %v\n", err)
+		} else {
+			log.Printf("XMIT parameters: %s\n", marshalled)
+		}
+	*/
 
-	// Discard err if it is EOF
-	if err != nil && err == io.EOF {
-		err = nil
-	}
-
-	return count, err
+	return &xmitParms, nil
 }

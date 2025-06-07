@@ -3,8 +3,9 @@ package unloadfile
 import (
 	"bytes"
 	"encoding/binary"
-	"encoding/json"
-	"sort"
+
+	// "encoding/json"
+	// "sort"
 
 	// "encoding/json"
 	"fmt"
@@ -13,10 +14,11 @@ import (
 	"os"
 
 	"github.com/jguillaumes/go-ebcdic"
-	"github.com/jguillaumes/go-hexdump"
+	_ "github.com/jguillaumes/go-hexdump"
+	xmit "github.com/jguillaumes/xmit_reader/internal/xmitfile"
 )
 
-func ProcessUnloadFile(inFile os.File, targetDir string) (int, error) {
+func ProcessUnloadFile(inFile os.File, targetDir string, xmf xmit.XmitFileParams) (int, error) {
 	var numbytes = 0
 
 	//+
@@ -54,11 +56,11 @@ func ProcessUnloadFile(inFile os.File, targetDir string) (int, error) {
 		return 0, err
 	}
 
-	marshalled, _ := json.MarshalIndent(c1, "", "  ")
-	log.Println(string(marshalled))
+	// marshalled, _ := json.MarshalIndent(c1, "", "  ")
+	// log.Println(string(marshalled))
 
-	marshalled, _ = json.MarshalIndent(c2, "", "  ")
-	log.Println(string(marshalled))
+	// marshalled, _ = json.MarshalIndent(c2, "", "  ")
+	// log.Println(string(marshalled))
 
 	dirBlocks, err := readDirBlocks(inFile)
 	if err != nil {
@@ -86,22 +88,29 @@ func ProcessUnloadFile(inFile os.File, targetDir string) (int, error) {
 		return 0, err
 	}
 
-	keys := make([]uint32, 0, len(members))
-	for k := range members {
-		keys = append(keys, k)
-	}
-	sort.SliceStable(keys, func(i, j int) bool {
-		//		return members[keys[i]].memberName < members[keys[j]].memberName
-		var ttri uint32 = (uint32(members[keys[i]].track) << 8) + uint32(members[keys[i]].offset)
-		var ttrj uint32 = (uint32(members[keys[j]].track) << 8) + uint32(members[keys[j]].offset)
-		return ttri < ttrj
-	})
-
-	for k := range keys {
-		m := members[keys[k]]
-		log.Printf("Member %-8s(%06x): TT: 0x%04x, R: 0x%02x, Ptr: %016x\n", m.memberName, keys[k], m.track, m.offset, m.filePtr)
+	n, err = GenerateFiles(members, &inFile, "", "", xmf)
+	if err != nil {
+		return 0, err
 	}
 
+	/*
+		keys := make([]uint32, 0, len(members))
+		for k := range members {
+			keys = append(keys, k)
+		}
+
+		sort.SliceStable(keys, func(i, j int) bool {
+			//		return members[keys[i]].memberName < members[keys[j]].memberName
+			var ttri uint32 = (uint32(members[keys[i]].Track) << 8) + uint32(members[keys[i]].Offset)
+			var ttrj uint32 = (uint32(members[keys[j]].Track) << 8) + uint32(members[keys[j]].Offset)
+			return ttri < ttrj
+		})
+
+		for k := range keys {
+			m := members[keys[k]]
+			log.Printf("Member %-8s(%06x): TT: 0x%04x, R: 0x%02x, Ptr: %016x\n", m.MemberName, keys[k], m.Track, m.Offset, m.FilePtr)
+		}
+	*/
 	// marshalled, err := json.MarshalIndent(c1, "", "  ")
 	// log.Printf("COPYR1: %s\n", marshalled)
 	// marshalled, err = json.MarshalIndent(c2, "", "  ")
@@ -170,9 +179,9 @@ func processDirBlocks(blocks []DirBlock) (MemberMap, error) {
 			tt := binary.BigEndian.Uint16(bbuff.Next(2))
 			r, _ := bbuff.ReadByte()
 			entry := MemberEntry{
-				memberName: currEntry,
-				track:      tt,
-				offset:     r,
+				MemberName: currEntry,
+				Track:      tt,
+				Offset:     r,
 			}
 			ttr := uint32(tt)<<8 + uint32(r)
 			entries[ttr] = entry
@@ -241,12 +250,12 @@ func processDataRecords(inFile os.File, members MemberMap, tpc uint16, cr1 *Copy
 			ttr := tt<<8 + uint32(r)
 			m, ok := members[ttr]
 			if !ok {
-				log.Printf("Member with ttr %04x:%02x not found. len=%d, offset=%d (%04x%04x%02x)\n", ttr>>8, ttr&0xff, reclen, currOffset, cc, hh, r)
-				log.Printf("\n%s", hexdump.HexDump(memberDataBuff.Bytes()[0:64], ebcdic.EBCDIC037))
+				// log.Printf("Member with ttr %04x:%02x not found. len=%d, offset=%d (%04x%04x%02x)\n", ttr>>8, ttr&0xff, reclen, currOffset, cc, hh, r)
+				// log.Printf("\n%s", hexdump.HexDump(memberDataBuff.Bytes()[0:64], ebcdic.EBCDIC037))
 			} else {
-				log.Printf("Member with ttr %04x:%02x found (%s), len=%d, offset=%d\n", ttr>>8, ttr&0xff, m.memberName, reclen, currOffset)
-				log.Printf("\n%s", hexdump.HexDump(memberDataBuff.Bytes()[0:64], ebcdic.EBCDIC037))
-				m.filePtr = currOffset
+				//	log.Printf("Member with ttr %04x:%02x found (%s), len=%d, offset=%d\n", ttr>>8, ttr&0xff, m.memberName, reclen, currOffset)
+				//	log.Printf("\n%s", hexdump.HexDump(memberDataBuff.Bytes()[0:64], ebcdic.EBCDIC037))
+				m.FilePtr = currOffset
 				members[ttr] = m
 			}
 
