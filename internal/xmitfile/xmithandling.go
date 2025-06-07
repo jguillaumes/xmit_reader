@@ -3,9 +3,11 @@ package xmitfile
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"io"
-	"log"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/jguillaumes/go-ebcdic"
 	xu "github.com/jguillaumes/xmit_reader/internal/xmitutils"
@@ -53,7 +55,7 @@ func ProcessXMITFile(inFile io.Reader, targetDir string, unloadFile io.Writer) (
 		if err != nil {
 			return nil, err
 		}
-		// fmt.Printf("Record Length: %3d, flags: %08b, id: %s\n", data.recordLen(), data.recordFlags(), data.recordId())
+		log.Debugf("Record Length: %3d, flags: %08b, id: %s\n", data.recordLen(), data.recordFlags(), data.recordId())
 		switch data.recordId() {
 		case "INMR01":
 			tus := data.textUnits(0)
@@ -77,7 +79,7 @@ func ProcessXMITFile(inFile io.Reader, targetDir string, unloadFile io.Writer) (
 					// Parse the timestamp
 					timestamp, err := time.Parse("20060102150405", tstamp)
 					if err != nil {
-						log.Printf("Error parsing timestamp: %v\n", err)
+						log.Warnf("Error parsing timestamp: %v\n", err)
 					} else {
 						xmitParms.SourceTstamp = timestamp
 					}
@@ -156,9 +158,8 @@ func ProcessXMITFile(inFile io.Reader, targetDir string, unloadFile io.Writer) (
 						}
 					}
 					fileParams.SourceDSName = dsname
-					/* 				default:
-					fmt.Printf("Unknown text unit ID: %04x\n", tu.Id())
-					*/
+				default:
+					log.Tracef("Unknown text unit ID: %04x\n", tu.Id())
 				}
 			}
 			xmitParms.XmitFiles = append(xmitParms.XmitFiles, fileParams)
@@ -167,7 +168,7 @@ func ProcessXMITFile(inFile io.Reader, targetDir string, unloadFile io.Writer) (
 		case "INMR04":
 			// User control record, ignore it
 		case "INMR06": // Last record in the XMIT file, end processing here
-			// log.Println("End of XMIT file processing.")
+			log.Debugln("End of XMIT file processing.")
 			endOfXmit = true
 		case "INMR07":
 			// Notification record, ignore it
@@ -189,14 +190,14 @@ func ProcessXMITFile(inFile io.Reader, targetDir string, unloadFile io.Writer) (
 		}
 		count++
 	}
-	/*
+	if log.GetLevel() == log.DebugLevel {
 		marshalled, err := json.MarshalIndent(xmitParms, "", "  ")
 		if err != nil {
-			log.Printf("Error marshalling XMIT parameters: %v\n", err)
+			log.Warnf("Error marshalling XMIT parameters: %v\n", err)
 		} else {
-			log.Printf("XMIT parameters: %s\n", marshalled)
+			log.Debugf("XMIT parameters: %s\n", marshalled)
 		}
-	*/
+	}
 
 	return &xmitParms, nil
 }
