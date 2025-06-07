@@ -102,6 +102,7 @@ func ProcessXMITFile(inFile io.Reader, targetDir string, unloadFile io.Writer) (
 						fileParams.SourceDsorg = "VSAM"
 					case 0x0200:
 						fileParams.SourceDsorg = "PO"
+						fileParams.SourceDstype = "PDS"
 					case 0x4000:
 						fileParams.SourceDsorg = "PS"
 					default:
@@ -190,7 +191,7 @@ func ProcessXMITFile(inFile io.Reader, targetDir string, unloadFile io.Writer) (
 		}
 		count++
 	}
-	if log.GetLevel() == log.DebugLevel {
+	if log.GetLevel() >= log.DebugLevel {
 		marshalled, err := json.MarshalIndent(xmitParms, "", "  ")
 		if err != nil {
 			log.Warnf("Error marshalling XMIT parameters: %v\n", err)
