@@ -17,6 +17,18 @@
             ]
         },
         {
+            "name": "Debug longb xmitreader",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}",
+            "args": [
+                "--input", "data/test.xmit",
+                "--target", "work",
+                "--type", "txt"
+            ]
+        },
+        {
             "name": "Debug pdse xmitreader",
             "type": "go",
             "request": "launch",

@@ -81,7 +81,7 @@ func writeMember(f *os.File, fpos int64, outnam string, xmf xmit.XmitFileParams,
 		b := bytes.NewBuffer(buffer)
 		hdr := b.Next(12) // Block header
 		blockFlag := hdr[0]
-		if blockFlag != 0x00 {
+		if blockFlag != 0x00 && blockFlag != 0x80 { //0x80 is end block of unloaded PDSE
 			// Non member data block (notes or extended attributes), ignored
 			log.Debugf("Non data bloc: %02x\n", blockFlag)
 			continue
@@ -124,12 +124,9 @@ func writeMember(f *os.File, fpos int64, outnam string, xmf xmit.XmitFileParams,
 					nb -= n
 				}
 			}
-
 			memberslen -= uint16(blockSize)
 		}
-		memberFile.Close()
-		endMember = true
 	}
-
+	memberFile.Close()
 	return nil
 }

@@ -262,8 +262,8 @@ func processDataRecords(inFile os.File, members MemberMap, tpc uint16, cr1 *Copy
 			ttr := tt<<8 + uint32(r)
 			m, ok := members[ttr]
 			if !ok {
-				log.Warnf("Member with ttr %04x:%02x not found. len=%d, offset=%d (%04x%04x%02x)\n", ttr>>8, ttr&0xff, reclen, currOffset, cc, hh, r)
-				log.Warnf("\n%s", hexdump.HexDump(memberDataBuff.Bytes()[0:64], encoding))
+				log.Debugf("Member with ttr %04x:%02x not found. len=%d, offset=%d (%04x%04x%02x)\n", ttr>>8, ttr&0xff, reclen, currOffset, cc, hh, r)
+				log.Debugf("\n%s", hexdump.HexDump(memberDataBuff.Bytes()[0:64], encoding))
 			} else {
 				log.Debugf("Member with ttr %04x:%02x found (%s), len=%d, offset=%d\n", ttr>>8, ttr&0xff, m.MemberName, reclen, currOffset)
 				log.Debugf("\n%s", hexdump.HexDump(memberDataBuff.Bytes()[0:64], encoding))
