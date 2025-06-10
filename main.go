@@ -64,7 +64,7 @@ func main() {
 			log.Error("Error creating temporary unload file:", err.Error())
 			os.Exit(8)
 		}
-		defer tempFile.Close()
+		// defer tempFile.Close()
 		*unloadFile = tempFile.Name()
 		deleteUnloadFile = true
 	} else {
@@ -117,6 +117,12 @@ func main() {
 		log.Errorln(err)
 		rc = 8
 	}
+
+	err = unloadFileHandle.Close()
+	if (err != nil) {
+		log.Errorln(err)
+	}
+ 
 	if deleteUnloadFile {
 		// Delete the unload file if it was created as a temporary file
 		if err := os.Remove(*unloadFile); err != nil {
