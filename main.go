@@ -17,6 +17,8 @@ func main() {
 	logf := log.TextFormatter{
 		PadLevelText:           true,
 		DisableLevelTruncation: true,
+		FullTimestamp:          true,
+		TimestampFormat:        "02-Jan-2006 03:04:05.000",
 	}
 
 	log.SetFormatter(&logf)
@@ -110,7 +112,7 @@ func main() {
 	}
 	defer unloadFileHandle.Close()
 
-	_, err = unloadfile.ProcessUnloadFile(*unloadFileHandle, *targetDir, *typeExt, xmf, *encoding)
+	nfiles, err := unloadfile.ProcessUnloadFile(*unloadFileHandle, *targetDir, *typeExt, xmf, *encoding)
 	if err != nil && err != io.EOF {
 		log.Errorln(err)
 		rc = 8
@@ -124,6 +126,6 @@ func main() {
 			log.Debugln("Temporary unload file deleted:", *unloadFile)
 		}
 	}
-
+	log.Infof("%d members expanded from XMIT file %s\n", nfiles, *inputFile)
 	os.Exit(rc)
 }

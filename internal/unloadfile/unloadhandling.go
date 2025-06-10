@@ -21,7 +21,6 @@ import (
 )
 
 func ProcessUnloadFile(inFile os.File, targetDir string, typeExt string, xmf xmit.XmitFileParams, encoding string) (int, error) {
-	var numbytes = 0
 
 	//+
 	// Read COPYR1 record
@@ -93,7 +92,7 @@ func ProcessUnloadFile(inFile os.File, targetDir string, typeExt string, xmf xmi
 		return 0, err
 	}
 
-	_, err = GenerateFiles(members, &inFile, targetDir, typeExt, xmf, encoding)
+	nfiles, err := GenerateFiles(members, &inFile, targetDir, typeExt, xmf, encoding)
 	if err != nil {
 		return 0, err
 	}
@@ -124,7 +123,7 @@ func ProcessUnloadFile(inFile os.File, targetDir string, typeExt string, xmf xmi
 		marshalled, _ = json.MarshalIndent(c2, "", "  ")
 		log.Debugf("COPYR2: %s\n", marshalled)
 	}
-	return numbytes, nil
+	return nfiles, nil
 }
 
 func readDirBlocks(inFile os.File) ([]DirBlock, error) {
