@@ -89,7 +89,7 @@ func main() {
 	// Process the input file and generate output files
 	xmitParms, err := xmitfile.ProcessXMITFile(inFile, *targetDir, unloadFileHandle, *encoding)
 	if err != nil {
-		log.Error("Error processing input file:", err.Error())
+		log.Error("Error processing input file: ", err.Error())
 		os.Exit(8)
 	}
 
@@ -119,10 +119,10 @@ func main() {
 	}
 
 	err = unloadFileHandle.Close()
-	if (err != nil) {
+	if err != nil {
 		log.Errorln(err)
 	}
- 
+
 	if deleteUnloadFile {
 		// Delete the unload file if it was created as a temporary file
 		if err := os.Remove(*unloadFile); err != nil {

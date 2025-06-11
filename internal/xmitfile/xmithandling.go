@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"io"
 	"time"
 
@@ -51,6 +52,7 @@ func ProcessXMITFile(inFile io.Reader, targetDir string, unloadFile io.Writer, e
 	xmitParms := *NewXmitParams()
 	var endOfXmit bool = false
 	var currentBlock *bytes.Buffer
+	var foundINMR01 = false
 
 	for !endOfXmit {
 		data, err := readXMITRecord(inFile)
@@ -60,6 +62,7 @@ func ProcessXMITFile(inFile io.Reader, targetDir string, unloadFile io.Writer, e
 		log.Debugf("Record Length: %3d, flags: %08b, id: %s\n", data.recordLen(), data.recordFlags(), data.recordId())
 		switch data.recordId() {
 		case "INMR01":
+			foundINMR01 = true
 			tus := data.textUnits(0)
 			for t := range tus {
 				tu := tus[t]
@@ -176,6 +179,10 @@ func ProcessXMITFile(inFile io.Reader, targetDir string, unloadFile io.Writer, e
 		case "INMR07":
 			// Notification record, ignore it
 		default:
+			// If we have not found an INMR01 this is not an XMIT file
+			if !foundINMR01 {
+				return nil, fmt.Errorf("this does not look like an XMIT file")
+			}
 			// Data reecord
 			if data.recordFlags()&FirstSegment != 0 {
 				currentBlock = bytes.NewBuffer(make([]byte, 0, 32767))
